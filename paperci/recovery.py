@@ -31,14 +31,16 @@ TAXONOMY: list[tuple[str, str]] = [
 _COMPILED = [(c, re.compile(p, re.I)) for c, p in TAXONOMY]
 
 
-_MASKED = re.compile(r"Traceback \(most recent call last\)|Tunnel connection failed: 403|ProxyError|"
-                     r"ModuleNotFoundError|ERROR: (Could not|No matching)|RuntimeError: |FileNotFoundError")
+_MASKED = re.compile(r"^(Traceback \(most recent call last\)|ERROR: (Could not|No matching)|"
+                     r"(ModuleNotFound|FileNotFound|Runtime|Import|Memory)Error: )|Tunnel connection failed: 403|ProxyError", re.M)
+_READ_ONLY = re.compile(r"^\s*(ls|cat|head|tail|grep|rg|find|wc|sed\s+-n|less|tree|file|du)\b")
 
 
-def classify(output: str, exit_code: int) -> str | None:
+def classify(output: str, exit_code: int, cmd: str = "") -> str | None:
     if exit_code == 0:
-        # `cmd | tail` returns tail's exit code; look for unmistakable errors anyway.
-        if not _MASKED.search(output[-6000:]):
+        # `cmd | tail` returns tail's exit code; look for unmistakable errors anyway,
+        # but never in commands that merely display files (source code mentions errors).
+        if _READ_ONLY.match(cmd) or not _MASKED.search(output[-6000:]):
             return None
         for cat, rx in _COMPILED:
             if rx.search(output[-6000:]):

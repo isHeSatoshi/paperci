@@ -22,6 +22,8 @@ artifacts/
 sandbox_out/
 workdir/
 data/*.sqlite
+data/*.sqlite-*
+registry/
 data/*.sqlite-journal
 data/*.db
 *.log

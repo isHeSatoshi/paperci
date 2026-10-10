@@ -163,7 +163,7 @@ class Builder:
             r = self.sb.exec(cmd, timeout=t)
             self.actions.append({"type": "shell", "cmd": cmd, "exit": r.exit_code, "timeout": t})
             obs = f"exit={r.exit_code} ({r.seconds}s)\n{r.tail(2500)}"
-            cat = classify(r.output, r.exit_code)
+            cat = classify(r.output, r.exit_code, cmd)
             if cat:
                 fid = db.log_failure(self.arxiv_id, self.run_label, "builder.shell", cat,
                                      snippet_for(r.output, cat), trace_id=tracing.current_trace_id())

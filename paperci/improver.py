@@ -11,9 +11,9 @@ import re
 import time
 from collections import defaultdict
 
-from . import db, llm, tracing
+from . import llm, tracing
 from .config import DATA_DIR, MODELS, ROOT, RUNS_DIR
-from .recovery import load_playbook, save_playbook
+from .recovery import classify, load_playbook, save_playbook, snippet_for
 from .schemas import ImproverProposal, PlaybookRule
 
 BANNED = re.compile(r"hard-?cod|fake|fabricat|skip (the )?verif|copy .*result|precomputed|print (the )?expected|sealed|guess", re.I)
@@ -30,26 +30,50 @@ generalize to other repositories). Never advise hardcoding numbers, faking outpu
 or skipping verification. Prefer advice that saves turns."""
 
 
+_LOG_HDR = re.compile(r"^\$ (.*?)\n# exit=(-?\d+) seconds=([\d.]+)\n", re.S)
+
+
+def _parse_cmd_log(p) -> tuple[str, int, str] | None:
+    t = p.read_text(encoding="utf-8", errors="replace")
+    m = _LOG_HDR.match(t)
+    return (m.group(1), int(m.group(2)), t[m.end():]) if m else None
+
+
 def _evidence(labels: list[str]) -> dict[str, list[dict]]:
-    marks = ",".join("?" * len(labels))
-    rows = db.q(f"SELECT * FROM failures WHERE run_label IN ({marks}) AND stage LIKE 'builder.%' ORDER BY id", tuple(labels))
+    """Rebuild the failure taxonomy from raw sandbox logs and build results, using the
+    current classifier (so classifier fixes apply retroactively to old traces)."""
     clusters: dict[str, list[dict]] = defaultdict(list)
-    for r in rows:
-        r = dict(r)
-        nxt = ""
-        actions_f = RUNS_DIR / r["arxiv_id"].replace("/", "_") / r["run_label"] / "build" / "actions.json"
-        if actions_f.exists():
-            acts = json.loads(actions_f.read_text(encoding="utf-8"))
-            snippet_key = r["detail"][-80:]
-            for i, a in enumerate(acts):
-                if a["type"] == "shell" and a.get("exit", 0) != 0:
-                    # first failing command whose output we can't see here; take the next two actions
-                    nxt = " || ".join((x.get("cmd") or f"write {x.get('path')}")[:160] for x in acts[i + 1:i + 3])
-                    acts[i]["exit"] = 0  # consume, so the next failure maps to the next failing action
-                    break
-            actions_f_cache = acts  # noqa: F841
-        clusters[r["category"]].append({"paper": r["arxiv_id"], "detail": r["detail"][-700:],
-                                        "next_actions": nxt, "recovered": bool(r["recovered"])})
+    for label in labels:
+        for bdir in RUNS_DIR.glob(f"*/{label}/build"):
+            paper = bdir.parent.parent.name
+            res_f = bdir / "result.json"
+            if not res_f.exists():
+                continue
+            res = json.loads(res_f.read_text(encoding="utf-8"))
+            built = res.get("status") == "built"
+            logs = sorted((bdir / "cmds").glob("cmd_*.log"))
+            parsed = [x for x in (_parse_cmd_log(p) for p in logs) if x]
+            for i, (cmd, code, out) in enumerate(parsed):
+                cat = classify(out, code, cmd)
+                if not cat or i == 0:  # cmd 1 is the harness repo fetch
+                    continue
+                nxt = " || ".join(c[:160] for c, _, _ in parsed[i + 1:i + 3])
+                clusters[cat].append({"paper": paper, "detail": f"$ {cmd[:200]}\n" + snippet_for(out, cat)[-600:],
+                                      "next_actions": nxt, "recovered": built})
+            for host, n in (res.get("egress") or {}).get("denied", {}).items():
+                clusters["egress_denied"].append({"paper": paper, "detail": f"proxy refused host {host} {n} times",
+                                                  "next_actions": "", "recovered": built})
+            if res.get("status") in ("max_turns", "wall_clock"):
+                reads = sum(1 for c, _, _ in parsed if re.match(r"\s*(ls|cat|head|grep|find|sed -n|python3? -c)", c))
+                clusters["turn_budget_exhausted"].append({
+                    "paper": paper, "recovered": False, "next_actions": "",
+                    "detail": f"status={res['status']} turns={res.get('turns')} read_like_cmds={reads}/{len(parsed)} "
+                              f"never submitted; first commands: " + " | ".join(c[:80] for c, _, _ in parsed[1:6])})
+            if res.get("status") == "gave_up" and (res.get("turns") or 0) > 6:
+                clusters["late_give_up"].append({
+                    "paper": paper, "recovered": False, "next_actions": "",
+                    "detail": f"gave_up category={res.get('give_up_category')} at turn {res.get('turns')} "
+                              f"(cost ${res.get('cost_usd')}): {res.get('reason', '')[:400]}"})
     return clusters
 
 
