@@ -27,7 +27,11 @@ next (and whether the build eventually succeeded). Write short, general, reusabl
 Each rule: rule_id (snake_case), category (one of the given categories), pattern (a Python regex that
 matches the error text of that failure class), advice (<= 300 chars, concrete commands or tactics that
 generalize to other repositories). Never advise hardcoding numbers, faking outputs, copying result files,
-or skipping verification. Prefer advice that saves turns."""
+or skipping verification. Prefer advice that saves turns.
+If evidence shows that advice alone did not change behaviour (e.g. a rule already existed for a failure
+class that keeps recurring), you may ALSO propose a `controller`: harness-enforced knobs
+{max_turns (10-30), run_by_turn, script_by_turn, single_target, rationale}. The harness will inject a
+mandatory instruction when a milestone is missed. Keep max_turns low enough to fit the cost cap."""
 
 
 HARNESS_CMD = re.compile(r"^(cat /work/paperci_run\.sh 2>/dev/null|diff -ruN |test -s /work/paperci_run\.sh|du -sm |curl -fsSL --retry 3)")
@@ -70,7 +74,7 @@ def _evidence(labels: list[str]) -> dict[str, list[dict]]:
                 reads = sum(1 for c, _, _ in parsed if re.match(r"\s*(ls|cat|head|grep|find|sed -n|python3? -c)", c))
                 clusters["turn_budget_exhausted"].append({
                     "paper": paper, "recovered": False, "next_actions": "",
-                    "detail": f"status={res['status']} turns={res.get('turns')} read_like_cmds={reads}/{len(parsed)} "
+                    "detail": f"status={res['status']} playbook_gen={res.get('playbook_generation')} turns={res.get('turns')} read_like_cmds={reads}/{len(parsed)} "
                               f"never submitted; first commands: " + " | ".join(c[:80] for c, _, _ in parsed[1:6])})
             if res.get("status") == "gave_up" and (res.get("turns") or 0) > 6:
                 clusters["late_give_up"].append({
@@ -132,11 +136,28 @@ def improve(labels: list[str], apply: bool = False) -> dict:
         for r in prop.rules:
             ok, why = _gate(r, clusters)
             (accepted if ok else rejected).append({"rule": r.model_dump(), "gate": why})
+        ctrl_gate = None
+        if prop.controller:
+            c = prop.controller
+            # Projected worst-case builder cost: measured ~$0.012/turn early, growing with context.
+            projected = sum(0.008 + 0.0009 * t for t in range(1, c.max_turns + 1))
+            from .config import BUILDER_CAP_USD
+            if not (c.run_by_turn < c.script_by_turn < c.max_turns):
+                ctrl_gate = (False, "milestones must be ordered run < script < max_turns")
+            elif projected > BUILDER_CAP_USD:
+                ctrl_gate = (False, f"projected cost ${projected:.2f} > builder cap ${BUILDER_CAP_USD}")
+            else:
+                ctrl_gate = (True, f"bounds ok; projected worst-case builder cost ${projected:.2f}")
         tracing.set_attr(s, "proposed", len(prop.rules))
         tracing.set_attr(s, "accepted", len(accepted))
+        tracing.set_attr(s, "controller_gate", str(ctrl_gate))
         result = {"generation_before": pb.generation, "clusters": {k: len(v) for k, v in clusters.items()},
-                  "accepted": accepted, "rejected": rejected, "rationale": prop.rationale}
-        if apply and accepted:
+                  "accepted": accepted, "rejected": rejected, "rationale": prop.rationale,
+                  "controller": prop.controller.model_dump() if prop.controller else None,
+                  "controller_gate": ctrl_gate}
+        if apply and ctrl_gate and ctrl_gate[0]:
+            pb.controller = prop.controller
+        if apply and (accepted or (ctrl_gate and ctrl_gate[0])):
             by_id = {r.rule_id: r for r in pb.rules}
             for a in accepted:
                 by_id[a["rule"]["rule_id"]] = PlaybookRule.model_validate(a["rule"])

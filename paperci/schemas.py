@@ -56,13 +56,24 @@ class PlaybookRule(BaseModel):
     source_failures: int = 0
 
 
+class Controller(BaseModel):
+    """Policy knobs enforced by the harness (not just advice). Bounds are checked by the gate."""
+    max_turns: int = Field(18, ge=10, le=30)
+    run_by_turn: int = Field(8, ge=3, le=20)      # first non-read command executing repo code
+    script_by_turn: int = Field(12, ge=4, le=26)  # /work/paperci_run.sh must exist
+    single_target: bool = True                    # aim for one claim first, submit, done
+    rationale: str = ""
+
+
 class Playbook(BaseModel):
     generation: int = 0
     rules: list[PlaybookRule] = []
     notes: str = ""
     image: str = ""  # learned sandbox base image for this generation (envlearn)
+    controller: Optional[Controller] = None
 
 
 class ImproverProposal(BaseModel):
     rules: list[PlaybookRule]
     rationale: str
+    controller: Optional[Controller] = None

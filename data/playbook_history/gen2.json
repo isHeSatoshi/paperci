@@ -1,0 +1,107 @@
+{
+ "generation_before": 1,
+ "clusters": {
+  "nonzero_exit": 2,
+  "python_error": 2,
+  "egress_denied": 5,
+  "turn_budget_exhausted": 5,
+  "late_give_up": 4,
+  "timeout": 1
+ },
+ "accepted": [
+  {
+   "rule": {
+    "rule_id": "early_blocker_detection",
+    "category": "late_give_up",
+    "pattern": "give_up category=.*at turn 1[0-9]|cost \\$0\\.[1-9].*requires.*API key|requires.*GPU.*inference|requires.*credentials|gated.*Matterport|excluded from the release",
+    "advice": "Detect hard blockers (GPU, API keys, gated data, missing release assets) by turn 3: read README and check for required external resources. If any target metric is unachievable without blocked resources, give up by turn 5 with a clear explanation. Do not spend >$0.05 exploring workarounds.",
+    "source_failures": 4
+   },
+   "gate": "recall 1/4, false hits 0/15"
+  },
+  {
+   "rule": {
+    "rule_id": "broken_pipe_notebook_inspection",
+    "category": "python_error",
+    "pattern": "BrokenPipeError.*Broken pipe|Errno 32.*Broken pipe",
+    "advice": "BrokenPipeError in notebook cell inspection means stdout was closed early (e.g. piped to head). Use python3 script writing to a file instead: redirect output with '> /tmp/out.txt' or use sys.stdout.flush(). Avoid piping large python -c output through shell pipes.",
+    "source_failures": 2
+   },
+   "gate": "recall 1/2, false hits 0/17"
+  },
+  {
+   "rule": {
+    "rule_id": "grep_xargs_no_match_nonzero",
+    "category": "nonzero_exit",
+    "pattern": "grep.*xargs.*\\$\\?|xargs grep.*exit|\\$ grep -[a-zA-Z]* .* \\|\\s*$|\\$ find.*xargs grep",
+    "advice": "grep returns exit code 1 when no lines match, causing nonzero exit. Append '|| true' to grep/xargs commands, or use 'grep ... || echo NO_MATCH'. Never rely on grep exit code to gate subsequent logic when zero matches is a valid outcome.",
+    "source_failures": 2
+   },
+   "gate": "recall 1/2, false hits 0/17"
+  }
+ ],
+ "rejected": [
+  {
+   "rule": {
+    "rule_id": "openml_proxy_blocked_use_uci",
+    "category": "egress_denied",
+    "pattern": "ProxyError.*openml\\.org|proxy refused host.*openml\\.org|403 Filtered.*openml|openml.*403 Filtered",
+    "advice": "www.openml.org is blocked. Use allowed alternatives: archive.ics.uci.edu, huggingface.co, or zenodo.org. For Mice Protein: wget 'https://archive.ics.uci.edu/ml/machine-learning-databases/00342/Data_Cortex_Nuclear.xls'. Map dataset IDs to UCI/HF equivalents immediately.",
+    "source_failures": 3
+   },
+   "gate": "stale: www.openml.org is allowlisted now"
+  },
+  {
+   "rule": {
+    "rule_id": "github_api_proxy_blocked",
+    "category": "egress_denied",
+    "pattern": "proxy refused host.*api\\.github\\.com|ProxyError.*api\\.github\\.com|403 Filtered.*api\\.github",
+    "advice": "api.github.com is blocked at runtime. Do NOT call GitHub API for release assets or metadata. Check if files exist locally under /work/repo first. If release assets are required and absent, document as data_unavailable and give up early (turn <=5).",
+    "source_failures": 2
+   },
+   "gate": "stale: api.github.com is allowlisted now"
+  },
+  {
+   "rule": {
+    "rule_id": "too_many_read_cmds_no_submit",
+    "category": "turn_budget_exhausted",
+    "pattern": "read_like_cmds=\\d+/\\d+ never submitted|turns=18.*never submitted",
+    "advice": "Cap exploration at 5 turns. After reading README + 2-3 key files, write and run a script immediately. Do not chain cat/head/grep across many turns. Use one python3 script to inspect repo structure programmatically. If no script is running by turn 6, commit to best-guess implementation now.",
+    "source_failures": 5
+   },
+   "gate": "advice violates integrity policy"
+  },
+  {
+   "rule": {
+    "rule_id": "json_parse_error_api_blocked",
+    "category": "python_error",
+    "pattern": "json\\.decoder\\.JSONDecodeError|json.*load.*sys\\.stdin.*Traceback|JSONDecodeError.*line 1",
+    "advice": "JSON parse failure on API response usually means the proxy returned an HTML error page, not JSON. First check raw response: curl -s URL | head -5. If proxy blocks the host, stop and use an alternative source. Never pipe blocked-host curl output directly into python json.load.",
+    "source_failures": 1
+   },
+   "gate": "pattern matches none of its own failures"
+  },
+  {
+   "rule": {
+    "rule_id": "comment_only_cell_timeout",
+    "category": "timeout",
+    "pattern": "^\\s*#[^\\n]*\\n(?:\\s*#[^\\n]*\\n)*\\s*$|empty.*cell.*timeout|cell with only comments",
+    "advice": "Never submit a shell cell containing only comments or whitespace. Always include at least one executable command (e.g., 'echo ok' or 'ls /work/'). Comment-only cells hang indefinitely waiting for input.",
+    "source_failures": 1
+   },
+   "gate": "pattern matches none of its own failures"
+  }
+ ],
+ "rationale": "Key patterns: (1) openml.org is consistently blocked despite being in the allowlist regex\u2014needs explicit fallback advice to UCI/HF. (2) api.github.com is blocked at runtime for release asset fetching. (3) Late give-up at turn 16 wastes budget; enforce early detection. (4) turn_budget_exhausted from excessive reading without running\u2014reinforce the existing rule with stronger wording. (5) BrokenPipeError from piping large python output. (6) JSON parse errors from piping blocked-host responses. The controller is not added since the existing rules cover the main patterns; the egress and late_give_up issues are primarily advice problems.",
+ "controller": {
+  "max_turns": 18,
+  "run_by_turn": 5,
+  "script_by_turn": 8,
+  "single_target": true,
+  "rationale": "Enforce early execution: builders are spending 15+ turns reading without running. run_by_turn=5 forces first execution attempt early; script_by_turn=8 ensures a complete script exists before mid-point. This addresses the turn_budget_exhausted and late_give_up clusters."
+ },
+ "controller_gate": [
+  true,
+  "bounds ok; projected worst-case builder cost $0.30"
+ ]
+}

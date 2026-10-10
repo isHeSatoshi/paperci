@@ -1,4 +1,4 @@
-﻿"""Read a PaperCI trace back from neatlogs via the CLI (OAuth profile; the SDK key is
+"""Read a PaperCI trace back from neatlogs via the CLI (OAuth profile; the SDK key is
 removed from the child environment as the setup guide requires).
 
   python scripts/nl_trace.py list [N]

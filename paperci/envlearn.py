@@ -32,6 +32,6 @@ def propose(min_papers: int = 2, apply: bool = False) -> dict:
             sb.remove()
         tracing.set_attr(s, "promoted", ok)
     if apply and ok:
-        BASE.write_text("\n".join(sorted(base | set(ok))) + "\n")
+        BASE.write_text("\n".join(sorted(base | set(ok))) + "\n", newline="\n")
     return {"candidates": cands, "promoted": ok, "applied": apply,
             "note": "rebuild with scripts/build_images.ps1 -Tag gen1 and set PAPERCI_SANDBOX_IMAGE" if apply and ok else ""}

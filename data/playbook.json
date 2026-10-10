@@ -1,5 +1,5 @@
 {
-  "generation": 1,
+  "generation": 2,
   "rules": [
     {
       "rule_id": "needs_credentials_or_gpu_give_up",
@@ -18,7 +18,7 @@
     {
       "rule_id": "grep_xargs_no_match_nonzero",
       "category": "nonzero_exit",
-      "pattern": "xargs grep.*2>/dev/null.*\\n\\s*$|grep -n .* /work/repo/.*\\.py\\s*\\n\\s*$",
+      "pattern": "grep.*xargs.*\\$\\?|xargs grep.*exit|\\$ grep -[a-zA-Z]* .* \\|\\s*$|\\$ find.*xargs grep",
       "advice": "grep returns exit code 1 when no lines match, causing nonzero exit. Append '|| true' to grep/xargs commands, or use 'grep ... || echo NO_MATCH'. Never rely on grep exit code to gate subsequent logic when zero matches is a valid outcome.",
       "source_failures": 2
     },
@@ -28,8 +28,29 @@
       "pattern": "^\\$\\s*\\n#.*\\n#.*\\n#.*Let's\\s*\\n",
       "advice": "A shell cell with only comments and no executable command will hang or timeout. Always include at least one concrete command (e.g., 'ls /work/') in every submitted cell. Do not submit cells that are purely comment planning text.",
       "source_failures": 1
+    },
+    {
+      "rule_id": "early_blocker_detection",
+      "category": "late_give_up",
+      "pattern": "give_up category=.*at turn 1[0-9]|cost \\$0\\.[1-9].*requires.*API key|requires.*GPU.*inference|requires.*credentials|gated.*Matterport|excluded from the release",
+      "advice": "Detect hard blockers (GPU, API keys, gated data, missing release assets) by turn 3: read README and check for required external resources. If any target metric is unachievable without blocked resources, give up by turn 5 with a clear explanation. Do not spend >$0.05 exploring workarounds.",
+      "source_failures": 4
+    },
+    {
+      "rule_id": "broken_pipe_notebook_inspection",
+      "category": "python_error",
+      "pattern": "BrokenPipeError.*Broken pipe|Errno 32.*Broken pipe",
+      "advice": "BrokenPipeError in notebook cell inspection means stdout was closed early (e.g. piped to head). Use python3 script writing to a file instead: redirect output with '> /tmp/out.txt' or use sys.stdout.flush(). Avoid piping large python -c output through shell pipes.",
+      "source_failures": 2
     }
   ],
-  "notes": "gen 1 learned from ['dev-v1'] at 2026-10-11 01:45; envlearn promoted huggingface_hub (installed in 2 papers)",
-  "image": "paperci/sandbox:gen1"
+  "notes": "gen 2 learned from ['dev-v1', 'dev-v2'] at 2026-10-11 01:55",
+  "image": "paperci/sandbox:gen1",
+  "controller": {
+    "max_turns": 18,
+    "run_by_turn": 5,
+    "script_by_turn": 8,
+    "single_target": true,
+    "rationale": "Enforce early execution: builders are spending 15+ turns reading without running. run_by_turn=5 forces first execution attempt early; script_by_turn=8 ensures a complete script exists before mid-point. This addresses the turn_budget_exhausted and late_give_up clusters."
+  }
 }

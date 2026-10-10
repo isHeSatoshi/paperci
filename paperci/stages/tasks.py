@@ -189,7 +189,7 @@ def package(arxiv_id: str, run_label: str, paper: dict, snap: dict, build: dict,
 
             Do not hardcode or guess numbers. The hidden verifier compares your values with references that
             were measured independently by rerunning the code offline.
-            """), encoding="utf-8")
+            """), encoding="utf-8", newline="\n")
         (d / "task.toml").write_text(textwrap.dedent(f"""\
             schema_version = "1.3"
             source = "PaperCI from arXiv:{arxiv_id}"
@@ -220,20 +220,20 @@ def package(arxiv_id: str, run_label: str, paper: dict, snap: dict, build: dict,
             memory_mb = 6144
             storage_mb = 20480
             build_timeout_sec = 1800.0
-            """), encoding="utf-8")
-        (d / "environment" / "Dockerfile").write_text(_dockerfile(snap), encoding="utf-8")
-        (d / "solution" / "solve.sh").write_text(_solve_sh(actions), encoding="utf-8")
-        (d / "solution" / "extract.py").write_text(EXTRACT_PY, encoding="utf-8")
-        (d / "solution" / "extract_spec.json").write_text(json.dumps(spec, indent=1), encoding="utf-8")
+            """), encoding="utf-8", newline="\n")
+        (d / "environment" / "Dockerfile").write_text(_dockerfile(snap), encoding="utf-8", newline="\n")
+        (d / "solution" / "solve.sh").write_text(_solve_sh(actions), encoding="utf-8", newline="\n")
+        (d / "solution" / "extract.py").write_text(EXTRACT_PY, encoding="utf-8", newline="\n")
+        (d / "solution" / "extract_spec.json").write_text(json.dumps(spec, indent=1), encoding="utf-8", newline="\n")
         shutil.copy(bdir / "paperci_run.sh", d / "solution" / "paperci_run.sh")
-        (d / "tests" / "test.sh").write_text(TEST_SH, encoding="utf-8")
-        (d / "tests" / "check.py").write_text(CHECK_PY, encoding="utf-8")
-        (d / "tests" / "reference.json").write_text(json.dumps({"claims": ref}, indent=1), encoding="utf-8")
+        (d / "tests" / "test.sh").write_text(TEST_SH, encoding="utf-8", newline="\n")
+        (d / "tests" / "check.py").write_text(CHECK_PY, encoding="utf-8", newline="\n")
+        (d / "tests" / "reference.json").write_text(json.dumps({"claims": ref}, indent=1), encoding="utf-8", newline="\n")
         meta = {"task_id": tid, "arxiv_id": arxiv_id, "run_label": run_label, "verdict": verdict,
                 "confidence": confidence, "neatlogs_trace_id": trace_id, "sealed_claims_sha256": sealed_sha,
                 "scale": build.get("scale"), "claims": list(ref), "extract_spec_ok": len(spec) == len(ref),
                 "created_at": time.time()}
-        (d / "paperci.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+        (d / "paperci.json").write_text(json.dumps(meta, indent=1), encoding="utf-8", newline="\n")
         tracing.set_attr(s, "task_id", tid)
         return {"task_id": tid, "path": str(d), "claims": list(ref), "extract_spec_ok": len(spec) == len(ref)}
 

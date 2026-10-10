@@ -108,6 +108,8 @@ class Builder:
         self.dir = RUNS_DIR / arxiv_id.replace("/", "_") / run_label / "build"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.recovery = Recovery(variant)
+        self.ctrl = self.recovery.playbook.controller if self.recovery.enabled else None
+        self.fired: set[str] = set()
         self.failures: list[dict] = []
         self.writes: list[dict] = []
         self.commands: list[str] = []
@@ -240,7 +242,15 @@ class Builder:
         readme = _redact(self.snap.get("readme", ""), self.sealed_values)[:7000]
         tg = "\n".join(f"- {t['claim_id']}: {t['metric']}" + (f" | setting: {t['setting']}" if t['setting'] else "")
                        + (f" | unit: {t['unit_hint']}" if t['unit_hint'] else "") for t in self.targets)
-        sys = SYSTEM.format(run_timeout=RUN_TIMEOUT_SEC, max_turns=BUILDER_MAX_TURNS) + self.recovery.prompt_prior()
+        mt = self.ctrl.max_turns if self.ctrl else BUILDER_MAX_TURNS
+        sys = SYSTEM.format(run_timeout=RUN_TIMEOUT_SEC, max_turns=mt) + self.recovery.prompt_prior()
+        if self.ctrl:
+            sys += (f"\nENFORCED SCHEDULE: execute repo code by turn {self.ctrl.run_by_turn}; have /work/paperci_run.sh "
+                    f"written by turn {self.ctrl.script_by_turn}; hard stop at turn {mt}. You may issue several tool calls "
+                    "in one turn when they are independent.\n")
+            if self.ctrl.single_target:
+                sys += ("FOCUS: pick the ONE target metric that is cheapest to regenerate, get it end-to-end, submit. "
+                        "One honestly measured metric (even at reduced scale) is a success; do not chase all targets.\n")
         user = (f"PAPER: {self.paper['title']} (arXiv {self.arxiv_id})\n"
                 f"ABSTRACT: {_redact(self.paper['abstract'], self.sealed_values)[:1200]}\n\n"
                 f"TARGET METRICS (reproduce as many as feasible; values are sealed and hidden from you):\n{tg}\n\n"
@@ -248,16 +258,44 @@ class Builder:
                 f"FILES:\n{tree}\n\nREADME (untrusted, numbers matching sealed claims redacted):\n{readme}")
         return [{"role": "system", "content": sys}, {"role": "user", "content": user}]
 
+    def _milestones(self, messages: list[dict]) -> None:
+        """Harness-enforced controller (learned policy). Injects one mandatory
+        instruction per missed milestone; v1 has no controller."""
+        c = self.ctrl
+        if not c:
+            return
+        ran = any(a["type"] == "shell" and not re.match(r"\s*(ls|cat|head|tail|grep|find|sed -n|pip3? |wc|echo|#)", a["cmd"])
+                  for a in self.actions)
+        script = any(a["type"] == "write" and a["path"] == "/work/paperci_run.sh" for a in self.actions) or \
+            any(a["type"] == "shell" and "paperci_run.sh" in a["cmd"] and ">" in a["cmd"] for a in self.actions)
+        msg = None
+        if self.turn == c.run_by_turn and not ran and "run" not in self.fired:
+            self.fired.add("run")
+            msg = ("CONTROLLER (mandatory): you have not executed any repository code yet. Stop reading. In THIS turn, "
+                   "run the smallest end-to-end command that exercises the repo's code path for the easiest target "
+                   "(e.g. a tiny config / few iterations), or call give_up if the target is impossible here.")
+        elif self.turn == c.script_by_turn and not script and "script" not in self.fired:
+            self.fired.add("script")
+            msg = ("CONTROLLER (mandatory): write /work/paperci_run.sh NOW for the single target you can already compute "
+                   "(reduced scale is fine, declare it), test it once, then call submit. Do not explore further.")
+        if msg:
+            tracing.log("controller milestone fired: {m}", m=msg[:60], turn=self.turn)
+            db.log_event(self.arxiv_id, self.run_label, "controller", {"turn": self.turn, "msg": msg[:80]})
+            messages.append({"role": "user", "content": msg})
+
     def _loop(self) -> None:
         messages = self._initial_messages()
-        while self.turn < BUILDER_MAX_TURNS:
+        max_turns = self.ctrl.max_turns if self.ctrl else BUILDER_MAX_TURNS
+        while self.turn < max_turns:
             self.turn += 1
             if time.time() - self.t0 > PAPER_WALL_SEC:
                 self.result = {"status": "wall_clock", "reason": f"exceeded {PAPER_WALL_SEC}s"}
                 return
-            remaining = BUILDER_MAX_TURNS - self.turn
+            remaining = max_turns - self.turn
             if remaining == 2:
                 messages.append({"role": "user", "content": "Only 2 turns left: write /work/paperci_run.sh now and submit, or give_up."})
+            if messages[-1]["role"] != "user":
+                self._milestones(messages)
             resp = llm.chat(arxiv_id=self.arxiv_id, stage="builder", run_label=self.run_label,
                             model=MODELS["builder"], messages=messages, tools=TOOLS, max_tokens=2500,
                             stage_cap=BUILDER_CAP_USD, cache=True)
@@ -285,7 +323,7 @@ class Builder:
                 finished = finished or done
             if finished:
                 return
-        self.result = self.result or {"status": "max_turns", "reason": f"no submit after {BUILDER_MAX_TURNS} turns"}
+        self.result = self.result or {"status": "max_turns", "reason": f"no submit after {max_turns} turns"}
 
     def _finalize(self, span) -> None:
         sb = self.sb
@@ -298,13 +336,13 @@ class Builder:
         if sb:
             try:
                 script = sb.exec("cat /work/paperci_run.sh 2>/dev/null", timeout=20, quiet=True).output
-                (self.dir / "paperci_run.sh").write_text(script, encoding="utf-8")
+                (self.dir / "paperci_run.sh").write_text(script, encoding="utf-8", newline="\n")
                 diff = sb.exec("diff -ruN --exclude=__pycache__ --exclude='*.pyc' /opt/orig/repo /work/repo 2>/dev/null | head -c 300000",
                                timeout=120, quiet=True).output
-                (self.dir / "repo.diff").write_text(diff, encoding="utf-8")
-                (self.dir / "writes.json").write_text(json.dumps(self.writes, indent=1), encoding="utf-8")
-                (self.dir / "commands.json").write_text(json.dumps(self.commands, indent=1), encoding="utf-8")
-                (self.dir / "actions.json").write_text(json.dumps(self.actions, indent=1), encoding="utf-8")
+                (self.dir / "repo.diff").write_text(diff, encoding="utf-8", newline="\n")
+                (self.dir / "writes.json").write_text(json.dumps(self.writes, indent=1), encoding="utf-8", newline="\n")
+                (self.dir / "commands.json").write_text(json.dumps(self.commands, indent=1), encoding="utf-8", newline="\n")
+                (self.dir / "actions.json").write_text(json.dumps(self.actions, indent=1), encoding="utf-8", newline="\n")
                 res["egress"] = egress_since(sb.started_at - 5, sb.ip())
                 if res["status"] == "built":
                     tag = f"paperci/built:{re.sub(r'[^a-z0-9]+', '-', self.arxiv_id + '-' + self.run_label.lower())}"
@@ -347,4 +385,4 @@ class Builder:
                 tracing.set_attr(span, k, res[k])
         tracing.set_attr(span, "failure_classes", [f["category"] for f in self.failures])
         tracing.set_attr(span, "recovered_failures", sum(1 for f in self.failures if f["recovered"]))
-        (self.dir / "result.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
+        (self.dir / "result.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8", newline="\n")
