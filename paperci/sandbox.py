@@ -20,6 +20,7 @@ from .config import (INTERNAL_NET, PROXY_IMAGE, PROXY_NAME, SANDBOX_CPUS, SANDBO
                      SANDBOX_MEM, SANDBOX_PIDS)
 
 PROXY_URL = f"http://{PROXY_NAME}:8888"
+VENV_PATH = "/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SANDBOX_ENV = {
     "HTTP_PROXY": PROXY_URL, "HTTPS_PROXY": PROXY_URL, "http_proxy": PROXY_URL, "https_proxy": PROXY_URL,
     "NO_PROXY": "localhost,127.0.0.1", "PIP_DEFAULT_TIMEOUT": "60", "HF_HUB_DISABLE_TELEMETRY": "1",
@@ -155,7 +156,8 @@ class Sandbox:
         args = ["exec", "-u", "1000:1000", "-w", "/work"]
         for k, v in (env or {}).items():
             args += ["-e", f"{k}={v}"]
-        args += [self.name, "timeout", "-k", "10", str(timeout), "bash", "-lc", cmd]
+        # Not a login shell: /etc/profile would reset PATH and hide the /opt/venv interpreter.
+        args += ["-e", f"PATH={VENV_PATH}", self.name, "timeout", "-k", "10", str(timeout), "bash", "-c", cmd]
         t0 = time.time()
         try:
             p = _docker(*args, timeout=timeout + 60, check=False)

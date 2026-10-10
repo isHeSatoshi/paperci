@@ -64,6 +64,27 @@ def arxiv_search(query: str, max_results: int = 50, start: int = 0) -> list[dict
     return out
 
 
+def hf_daily(limit: int = 100) -> list[dict]:
+    """Hugging Face Daily Papers: community-curated fresh arXiv papers, many with a
+    linked GitHub repo. Author fields are deliberately not stored."""
+    r = requests.get("https://huggingface.co/api/daily_papers", params={"limit": limit}, headers=UA, timeout=30)
+    r.raise_for_status()
+    out = []
+    for x in r.json():
+        p = x.get("paper", {})
+        repo = p.get("githubRepo")
+        out.append({"arxiv_id": p.get("id"), "title": " ".join((p.get("title") or "").split()),
+                    "abstract": " ".join((p.get("summary") or "").split()), "comment": "",
+                    "categories": ["hf-daily"], "published": p.get("publishedAt", ""),
+                    "repo_url": find_github(repo) if repo else None})
+    return out
+
+
+def hf_fulltext(arxiv_id: str) -> str:
+    r = requests.get(f"https://huggingface.co/papers/{arxiv_id}.md", headers=UA, timeout=60)
+    return r.text if r.status_code == 200 and len(r.text) > 3000 else ""
+
+
 def _strip_html(s: str) -> str:
     s = re.sub(r"(?is)<(script|style|math|svg|nav|header|footer)[^>]*>.*?</\1>", " ", s)
     s = re.sub(r"(?i)<annotation[^>]*>(.*?)</annotation>", r" \1 ", s)
@@ -80,6 +101,9 @@ def arxiv_fulltext(arxiv_id: str) -> tuple[str, str]:
     r = _arxiv_get(f"https://arxiv.org/html/{arxiv_id}")
     if r.status_code == 200 and len(r.text) > 5000:
         return _strip_html(r.text), "arxiv-html"
+    hf = hf_fulltext(arxiv_id)
+    if hf:
+        return hf, "hf-papers-md"
     r = _arxiv_get(f"https://arxiv.org/abs/{arxiv_id}")
     m = re.search(r'(?s)<blockquote class="abstract[^"]*">(.*?)</blockquote>', r.text)
     return (_strip_html(m.group(1)) if m else ""), "arxiv-abstract"
@@ -138,7 +162,14 @@ def repo_snapshot(repo_url: str) -> dict:
         dl = rr.json().get("download_url")
         if dl:
             readme = requests.get(dl, headers=UA, timeout=30).text
+    manifests: dict[str, str] = {}
+    names = ("requirements.txt", "pyproject.toml", "setup.py", "environment.yml", "environment.yaml", "setup.cfg")
+    for t in sorted((x for x in tree if x["path"].split("/")[-1] in names), key=lambda x: x["path"].count("/"))[:4]:
+        rr2 = requests.get(f"https://raw.githubusercontent.com/{owner}/{name}/{sha}/{t['path']}", headers=UA, timeout=30)
+        if rr2.status_code == 200:
+            manifests[t["path"]] = rr2.text[:4000]
     return {
+        "manifests": manifests,
         "owner": owner, "name": name, "full_name": meta.get("full_name"), "sha": sha, "branch": branch,
         "size_kb": meta.get("size", 0), "language": meta.get("language"), "stars": meta.get("stargazers_count"),
         "archived": meta.get("archived"), "license": (meta.get("license") or {}).get("spdx_id"),

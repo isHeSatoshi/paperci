@@ -17,11 +17,18 @@ def split_for(arxiv_id: str) -> str:
     return "heldout" if h % 3 == 0 else "dev"
 
 
-def watch(queries: list[str] | None = None, per_query: int = 60, since: str | None = None) -> dict:
+def watch(queries: list[str] | None = None, per_query: int = 60, since: str | None = None,
+          hf: bool = True) -> dict:
     found = new = 0
-    with tracing.span("stage:watcher", kind="TOOL", queries=queries or DEFAULT_QUERIES):
-        for q in queries or DEFAULT_QUERIES:
-            for p in sources.arxiv_search(q, max_results=per_query):
+    with tracing.span("stage:watcher", kind="TOOL", queries=queries or DEFAULT_QUERIES, hf_daily=hf):
+        feeds = [sources.arxiv_search(q, max_results=per_query) for q in (queries or DEFAULT_QUERIES)]
+        if hf:
+            try:
+                feeds.append(sources.hf_daily(100))
+            except Exception as e:
+                tracing.log("hf daily feed failed: {err}", level="warning", err=str(e)[:200])
+        for feed in feeds:
+            for p in feed:
                 if since and p["published"][:10] < since:
                     continue
                 if not p["repo_url"]:

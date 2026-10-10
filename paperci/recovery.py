@@ -31,8 +31,18 @@ TAXONOMY: list[tuple[str, str]] = [
 _COMPILED = [(c, re.compile(p, re.I)) for c, p in TAXONOMY]
 
 
+_MASKED = re.compile(r"Traceback \(most recent call last\)|Tunnel connection failed: 403|ProxyError|"
+                     r"ModuleNotFoundError|ERROR: (Could not|No matching)|RuntimeError: |FileNotFoundError")
+
+
 def classify(output: str, exit_code: int) -> str | None:
     if exit_code == 0:
+        # `cmd | tail` returns tail's exit code; look for unmistakable errors anyway.
+        if not _MASKED.search(output[-6000:]):
+            return None
+        for cat, rx in _COMPILED:
+            if rx.search(output[-6000:]):
+                return cat
         return None
     if exit_code == 124:
         return "timeout"

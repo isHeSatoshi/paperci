@@ -56,6 +56,21 @@ def value_in_text(v: float, text: str) -> bool:
     return False
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s or "").strip().lower()
+
+
+def grounded(c: Claim, text: str) -> bool:
+    """The quote must contain the value and actually occur in the paper text
+    (any 30-char window of it). Stops the extractor from inventing numbers."""
+    q, t = _norm(c.quote), _norm(text)
+    if not q or not value_in_text(c.value, q):
+        return False
+    if len(q) < 30:
+        return q in t
+    return any(q[i:i + 30] in t for i in range(0, len(q) - 29, 10))
+
+
 def seal(arxiv_id: str, claims: list[Claim]) -> str:
     payload = json.dumps([c.model_dump() for c in claims], sort_keys=True)
     digest = hashlib.sha256(payload.encode()).hexdigest()
@@ -100,7 +115,7 @@ def extract(arxiv_id: str, run_label: str, paper: dict) -> dict:
                             model=MODELS["claims"])
         kept, dropped = [], []
         for c in cs.claims[:5]:
-            (kept if value_in_text(c.value, text) else dropped).append(c)
+            (kept if grounded(c, text) else dropped).append(c)
         for i, c in enumerate(kept, 1):
             c.claim_id = f"c{i}"
         digest = seal(arxiv_id, kept)

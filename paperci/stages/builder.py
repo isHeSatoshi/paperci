@@ -111,6 +111,7 @@ class Builder:
         self.failures: list[dict] = []
         self.writes: list[dict] = []
         self.commands: list[str] = []
+        self.actions: list[dict] = []
         self.pip: list[str] = []
         self.submit_attempts = 0
         self.result: dict = {}
@@ -160,6 +161,7 @@ class Builder:
             self.commands.append(cmd)
             self.pip += _pip_packages(cmd)
             r = self.sb.exec(cmd, timeout=t)
+            self.actions.append({"type": "shell", "cmd": cmd, "exit": r.exit_code, "timeout": t})
             obs = f"exit={r.exit_code} ({r.seconds}s)\n{r.tail(2500)}"
             cat = classify(r.output, r.exit_code)
             if cat:
@@ -183,6 +185,7 @@ class Builder:
             except SandboxError as e:
                 return f"error: {e}", False
             self.writes.append({"path": path, "content": content[:20000]})
+            self.actions.append({"type": "write", "path": path, "content": content})
             return f"wrote {len(content)} bytes to {path}", False
         if name == "give_up":
             self.result = {"status": "gave_up", "give_up_category": args.get("category", "other"),
@@ -299,6 +302,7 @@ class Builder:
                 (self.dir / "repo.diff").write_text(diff, encoding="utf-8")
                 (self.dir / "writes.json").write_text(json.dumps(self.writes, indent=1), encoding="utf-8")
                 (self.dir / "commands.json").write_text(json.dumps(self.commands, indent=1), encoding="utf-8")
+                (self.dir / "actions.json").write_text(json.dumps(self.actions, indent=1), encoding="utf-8")
                 res["egress"] = egress_since(sb.started_at - 5, sb.ip())
                 if res["status"] == "built":
                     tag = f"paperci/built:{re.sub(r'[^a-z0-9]+', '-', self.arxiv_id + '-' + self.run_label.lower())}"
@@ -309,6 +313,27 @@ class Builder:
             finally:
                 sb.remove()
         built = res["status"] == "built"
+        tid = tracing.current_trace_id()
+        for host, n in (res.get("egress") or {}).get("denied", {}).items():
+            fid = db.log_failure(self.arxiv_id, self.run_label, "builder.egress", "egress_denied",
+                                 f"proxy refused host {host} {n} times (not on allowlist)", trace_id=tid)
+            self.failures.append({"phase": "egress", "category": "egress_denied", "failure_id": fid, "host": host})
+        if res["status"] in ("max_turns", "wall_clock", "budget"):
+            kinds = {"read": 0, "install": 0, "run": 0, "write": 0}
+            for a in self.actions:
+                if a["type"] == "write":
+                    kinds["write"] += 1
+                elif re.search(r"pip3? install|apt|curl|wget|download", a["cmd"]):
+                    kinds["install"] += 1
+                elif re.match(r"\s*(ls|cat|head|tail|grep|find|sed -n|python3? -c \"?\s*import json)", a["cmd"]):
+                    kinds["read"] += 1
+                else:
+                    kinds["run"] += 1
+            wrote = any(a["type"] == "write" and a["path"].endswith("paperci_run.sh") for a in self.actions)
+            fid = db.log_failure(self.arxiv_id, self.run_label, "builder.budget", "turn_budget_exhausted",
+                                 f"status={res['status']} after {self.turn} turns; actions={kinds}; "
+                                 f"wrote_run_script={wrote}; submits={self.submit_attempts}", trace_id=tid)
+            self.failures.append({"phase": "budget", "category": "turn_budget_exhausted", "failure_id": fid})
         for f in self.failures:
             if built:
                 db.mark_recovered(f["failure_id"])
