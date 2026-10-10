@@ -1,0 +1,16 @@
+^pypi\.org$
+^files\.pythonhosted\.org$
+^download\.pytorch\.org$
+^github\.com$
+^codeload\.github\.com$
+^raw\.githubusercontent\.com$
+^objects\.githubusercontent\.com$
+^release-assets\.githubusercontent\.com$
+^huggingface\.co$
+^cdn-lfs(-us-1)?\.(huggingface\.co|hf\.co)$
+^cas-bridge\.xethub\.hf\.co$
+^zenodo\.org$
+^archive\.ics\.uci\.edu$
+^ossci-datasets\.s3\.amazonaws\.com$
+^www\.cs\.toronto\.edu$
+^yann\.lecun\.com$
