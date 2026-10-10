@@ -30,6 +30,7 @@ generalize to other repositories). Never advise hardcoding numbers, faking outpu
 or skipping verification. Prefer advice that saves turns."""
 
 
+HARNESS_CMD = re.compile(r"^(cat /work/paperci_run\.sh 2>/dev/null|diff -ruN |test -s /work/paperci_run\.sh|du -sm |curl -fsSL --retry 3)")
 _LOG_HDR = re.compile(r"^\$ (.*?)\n# exit=(-?\d+) seconds=([\d.]+)\n", re.S)
 
 
@@ -54,8 +55,10 @@ def _evidence(labels: list[str]) -> dict[str, list[dict]]:
             logs = sorted((bdir / "cmds").glob("cmd_*.log"))
             parsed = [x for x in (_parse_cmd_log(p) for p in logs) if x]
             for i, (cmd, code, out) in enumerate(parsed):
+                if i == 0 or HARNESS_CMD.match(cmd):  # harness-internal commands are not agent behaviour
+                    continue
                 cat = classify(out, code, cmd)
-                if not cat or i == 0:  # cmd 1 is the harness repo fetch
+                if not cat:
                     continue
                 nxt = " || ".join(c[:160] for c, _, _ in parsed[i + 1:i + 3])
                 clusters[cat].append({"paper": paper, "detail": f"$ {cmd[:200]}\n" + snippet_for(out, cat)[-600:],
@@ -86,10 +89,15 @@ def _gate(rule: PlaybookRule, clusters: dict[str, list[dict]]) -> tuple[bool, st
         return False, f"bad regex: {e}"
     if BANNED.search(rule.advice):
         return False, "advice violates integrity policy"
-    for host in re.findall(r"https?://([^/\s]+)", rule.advice):
-        allow = (ROOT / "sandbox" / "proxy" / "allowlist").read_text()
-        if not any(re.match(p, host) for p in allow.split()):
+    allow = (ROOT / "sandbox" / "proxy" / "allowlist").read_text().split()
+    for host in re.findall(r"https?://([^/\s'\"`]+)", rule.advice):
+        if not any(re.match(p, host) for p in allow):
             return False, f"advice references non-allowlisted host {host}"
+    if rule.category == "egress_denied":
+        # Knowledge can go stale: a host denied in old traces may be allowlisted since.
+        for host in re.findall(r"([a-z0-9][a-z0-9.\-]+\.(?:org|com|io|co|net|edu|nl))", rule.pattern + " " + rule.advice):
+            if any(re.match(p, host) or re.match(p, "www." + host) or re.match(p, "api." + host) for p in allow):
+                return False, f"stale: {host} is allowlisted now"
     own = clusters.get(rule.category, [])
     others = [x for c, xs in clusters.items() if c != rule.category for x in xs]
     hit_own = sum(1 for x in own if rx.search(x["detail"]))
@@ -114,7 +122,9 @@ def improve(labels: list[str], apply: bool = False) -> dict:
             for x in xs[:4]:
                 summary.append(f"- error: {x['detail'][-450:]!r}\n  next: {x['next_actions']!r}")
         existing = "\n".join(f"- {r.rule_id} ({r.category}): {r.advice}" for r in pb.rules) or "(none)"
-        user = (f"CATEGORIES: {sorted(clusters)}\n\nEXISTING RULES:\n{existing}\n\nFAILURE CLUSTERS:\n" + "\n".join(summary)
+        allow = (ROOT / "sandbox" / "proxy" / "allowlist").read_text().split()
+        user = (f"CATEGORIES: {sorted(clusters)}\n\nCURRENT EGRESS ALLOWLIST (regexes; hosts here are reachable NOW, "
+                f"even if old traces show them refused):\n{allow}\n\nEXISTING RULES:\n{existing}\n\nFAILURE CLUSTERS:\n" + "\n".join(summary)
                 + "\n\nPropose up to 8 new or revised rules (reuse a rule_id to revise it).")
         prop = llm.chat_typed(ImproverProposal, system=SYSTEM, user=user[:24000], max_tokens=2000,
                               arxiv_id="-", stage="improver", run_label="improver", model=MODELS["builder"])

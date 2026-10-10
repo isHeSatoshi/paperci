@@ -166,6 +166,8 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
             with tracing.span("stage:verdict", kind="GUARDRAIL", verdict=v, confidence=conf) as s:
                 tracing.set_attr(s, "reason", reason)
                 tracing.set_attr(s, "integrity_flags", integ["flags"])
+                tracing.guardrail(s, {"integrity": integ["flags"], "egress_denied": integ["egress_denied"]},
+                                  not integ["flags"], f"{v} ({conf}): {reason}")
             return {"verdict": v, "confidence": conf, "reason": reason, "integrity": integ, "per_claim": per_claim}
         dec = _run_stage(arxiv_id, "verdict", label, decide, tid)
         db.set_paper(arxiv_id, verdict=dec["verdict"], confidence=dec["confidence"], status=f"done:{label}")

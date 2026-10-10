@@ -66,6 +66,7 @@ def triage(arxiv_id: str, run_label: str, paper: dict, snap: dict) -> dict:
         if not ok:
             out.update(decision="reject", reason="; ".join(reasons))
             tracing.set_attr(s, "decision", "reject")
+            tracing.guardrail(s, facts, False, out["reason"][:300])
             return out
         files = "\n".join(t["path"] for t in snap["tree"][:180])
         user = (f"PAPER TITLE: {paper['title']}\nABSTRACT: {paper['abstract'][:1500]}\n\n"
@@ -77,4 +78,5 @@ def triage(arxiv_id: str, run_label: str, paper: dict, snap: dict) -> dict:
                    reason=t.reason if not accept else "feasible: " + t.reason)
         tracing.set_attr(s, "decision", out["decision"])
         tracing.set_attr(s, "reason", out["reason"][:300])
+        tracing.guardrail(s, facts, out["decision"] == "accept", out["reason"][:300])
         return out

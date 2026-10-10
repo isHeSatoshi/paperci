@@ -63,6 +63,8 @@ def _safe(v: Any) -> Any:
 def span(name: str, kind: str = "CHAIN", **attrs: Any) -> Iterator[Any]:
     """Open a span; attributes are stamped as paperci.<key>."""
     with neatlogs.trace(name, kind=kind) as s:
+        if kind == "TOOL":
+            s.set_attribute("neatlogs.tool.name", name.split(":", 1)[-1])
         for k, v in attrs.items():
             set_attr(s, k, v)
         _root_stack.append(s)
@@ -75,6 +77,16 @@ def span(name: str, kind: str = "CHAIN", **attrs: Any) -> Iterator[Any]:
 def set_attr(s: Any, key: str, value: Any) -> None:
     try:
         s.set_attribute(f"paperci.{key}", _safe(value))
+    except Exception:
+        pass
+
+
+def guardrail(s: Any, checked: Any, passed: bool, output: Any) -> None:
+    """Documented GUARDRAIL attributes so gates render as Passed/Blocked."""
+    try:
+        s.set_attribute("neatlogs.guardrail.input", _safe(checked))
+        s.set_attribute("neatlogs.guardrail.passed", bool(passed))
+        s.set_attribute("neatlogs.guardrail.output", _safe(output))
     except Exception:
         pass
 

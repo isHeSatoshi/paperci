@@ -16,6 +16,7 @@ def propose(min_papers: int = 2, apply: bool = False) -> dict:
     rows = db.q("SELECT package, COUNT(DISTINCT arxiv_id) n FROM package_installs GROUP BY package HAVING n>=? ORDER BY n DESC",
                 (min_papers,))
     cands = [r["package"] for r in rows if r["package"] not in base and r["package"] not in NEVER
+             and r["package"][:1].isalpha()
              and not r["package"].startswith(("nvidia-", "cuda"))][:15]
     if not cands:
         return {"candidates": [], "promoted": []}

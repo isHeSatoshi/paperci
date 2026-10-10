@@ -1,8 +1,9 @@
-numpy
-scipy
-pandas
-scikit-learn
+huggingface_hub
 matplotlib
-tqdm
+numpy
+pandas
 pyyaml
 requests
+scikit-learn
+scipy
+tqdm

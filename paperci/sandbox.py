@@ -151,8 +151,10 @@ class Sandbox:
         net = info["NetworkSettings"]["Networks"].get(INTERNAL_NET)
         return net["IPAddress"] if net else None
 
-    def exec(self, cmd: str, timeout: int = 600, env: dict | None = None) -> ExecResult:
-        self._n += 1
+    def exec(self, cmd: str, timeout: int = 600, env: dict | None = None, quiet: bool = False) -> ExecResult:
+        """quiet=True: harness-internal command, not written to the agent's command log."""
+        if not quiet:
+            self._n += 1
         args = ["exec", "-u", "1000:1000", "-w", "/work"]
         for k, v in (env or {}).items():
             args += ["-e", f"{k}={v}"]
@@ -167,7 +169,7 @@ class Sandbox:
             out, code = "[host timeout]", 124
         dt = time.time() - t0
         res = ExecResult(exit_code=code, output=out, seconds=round(dt, 1), timed_out=(code == 124))
-        if self.log_dir:
+        if self.log_dir and not quiet:
             (self.log_dir / f"cmd_{self._n:03d}.log").write_text(
                 f"$ {cmd}\n# exit={code} seconds={dt:.1f}\n{out}", encoding="utf-8")
         return res

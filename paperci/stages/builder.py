@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .. import db, ledger, llm, tracing
 from ..config import (BUILDER_CAP_USD, BUILDER_MAX_TURNS, CMD_TIMEOUT_SEC, INTERNAL_NET, MODELS,
-                      PAPER_WALL_SEC, RUN_TIMEOUT_SEC, RUNS_DIR)
+                      PAPER_WALL_SEC, RUN_TIMEOUT_SEC, RUNS_DIR, SANDBOX_IMAGE)
 from ..recovery import Recovery, classify, snippet_for
 from ..sandbox import Sandbox, SandboxError, _docker, egress_since, ensure_infra
 
@@ -95,7 +95,7 @@ def _pip_packages(cmd: str) -> list[str]:
             if tok.startswith("-") or "/" in tok or tok.endswith(".txt") or tok == ".":
                 continue
             name = re.split(r"[<>=!~\[;]", tok)[0].strip().lower()
-            if name and re.match(r"^[a-z0-9][a-z0-9._\-]*$", name):
+            if name and re.match(r"^[a-z][a-z0-9._\-]*$", name):
                 pkgs.append(name)
     return pkgs
 
@@ -193,7 +193,7 @@ class Builder:
             return "acknowledged", True
         if name == "submit":
             self.submit_attempts += 1
-            exists = self.sb.exec("test -s /work/paperci_run.sh && echo yes", timeout=20).output.strip()
+            exists = self.sb.exec("test -s /work/paperci_run.sh && echo yes", timeout=20, quiet=True).output.strip()
             if exists != "yes":
                 return "error: /work/paperci_run.sh does not exist or is empty", False
             with tracing.span("tool:dry_run_offline", kind="TOOL", attempt=self.submit_attempts) as s:
@@ -221,7 +221,9 @@ class Builder:
         self.turn = 0
         with tracing.span("stage:builder", kind="AGENT", arxiv_id=self.arxiv_id, variant=self.variant,
                           model=MODELS["builder"], playbook_generation=self.recovery.playbook.generation) as span:
-            self.sb = Sandbox.start(f"b-{self.arxiv_id}", network="proxy", log_dir=self.dir / "cmds")
+            image = (self.recovery.playbook.image if self.recovery.enabled else "") or SANDBOX_IMAGE
+            tracing.set_attr(span, "sandbox_image", image)
+            self.sb = Sandbox.start(f"b-{self.arxiv_id}", network="proxy", image=image, log_dir=self.dir / "cmds")
             try:
                 self._fetch_repo()
                 self._loop()
@@ -295,10 +297,10 @@ class Builder:
                    cost_usd=round(ledger.paper_total(self.arxiv_id, self.run_label, "builder"), 4))
         if sb:
             try:
-                script = sb.exec("cat /work/paperci_run.sh 2>/dev/null", timeout=20).output
+                script = sb.exec("cat /work/paperci_run.sh 2>/dev/null", timeout=20, quiet=True).output
                 (self.dir / "paperci_run.sh").write_text(script, encoding="utf-8")
                 diff = sb.exec("diff -ruN --exclude=__pycache__ --exclude='*.pyc' /opt/orig/repo /work/repo 2>/dev/null | head -c 300000",
-                               timeout=120).output
+                               timeout=120, quiet=True).output
                 (self.dir / "repo.diff").write_text(diff, encoding="utf-8")
                 (self.dir / "writes.json").write_text(json.dumps(self.writes, indent=1), encoding="utf-8")
                 (self.dir / "commands.json").write_text(json.dumps(self.commands, indent=1), encoding="utf-8")

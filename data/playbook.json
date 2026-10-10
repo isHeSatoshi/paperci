@@ -1,0 +1,35 @@
+{
+  "generation": 1,
+  "rules": [
+    {
+      "rule_id": "needs_credentials_or_gpu_give_up",
+      "category": "late_give_up",
+      "pattern": "needs_credentials|needs_gpu|data_unavailable.*turn 1[0-9]",
+      "advice": "Identify blockers (API keys, GPU, gated data) in the first 3 turns by reading README and requirements. If all target metrics require unavailable resources, document this clearly and give up early (turn <=5) rather than exhausting the budget exploring workarounds.",
+      "source_failures": 4
+    },
+    {
+      "rule_id": "too_many_read_cmds_no_submit",
+      "category": "turn_budget_exhausted",
+      "pattern": "read_like_cmds=\\d+/\\d+ never submitted",
+      "advice": "Stop reading after 5-6 exploration turns. If you have read README, pyproject.toml, and 2-3 key source files without submitting, commit to a plan and run code. Limit cat/head/grep chains; prefer a single python3 script that imports and inspects the repo programmatically.",
+      "source_failures": 3
+    },
+    {
+      "rule_id": "grep_xargs_no_match_nonzero",
+      "category": "nonzero_exit",
+      "pattern": "xargs grep.*2>/dev/null.*\\n\\s*$|grep -n .* /work/repo/.*\\.py\\s*\\n\\s*$",
+      "advice": "grep returns exit code 1 when no lines match, causing nonzero exit. Append '|| true' to grep/xargs commands, or use 'grep ... || echo NO_MATCH'. Never rely on grep exit code to gate subsequent logic when zero matches is a valid outcome.",
+      "source_failures": 2
+    },
+    {
+      "rule_id": "empty_command_timeout",
+      "category": "timeout",
+      "pattern": "^\\$\\s*\\n#.*\\n#.*\\n#.*Let's\\s*\\n",
+      "advice": "A shell cell with only comments and no executable command will hang or timeout. Always include at least one concrete command (e.g., 'ls /work/') in every submitted cell. Do not submit cells that are purely comment planning text.",
+      "source_failures": 1
+    }
+  ],
+  "notes": "gen 1 learned from ['dev-v1'] at 2026-10-11 01:45; envlearn promoted huggingface_hub (installed in 2 papers)",
+  "image": "paperci/sandbox:gen1"
+}

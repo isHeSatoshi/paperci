@@ -1,0 +1,96 @@
+{
+ "generation_before": 0,
+ "clusters": {
+  "nonzero_exit": 2,
+  "python_error": 2,
+  "egress_denied": 5,
+  "turn_budget_exhausted": 3,
+  "late_give_up": 4,
+  "timeout": 1
+ },
+ "accepted": [
+  {
+   "rule": {
+    "rule_id": "needs_credentials_or_gpu_give_up",
+    "category": "late_give_up",
+    "pattern": "needs_credentials|needs_gpu|data_unavailable.*turn 1[0-9]",
+    "advice": "Identify blockers (API keys, GPU, gated data) in the first 3 turns by reading README and requirements. If all target metrics require unavailable resources, document this clearly and give up early (turn <=5) rather than exhausting the budget exploring workarounds.",
+    "source_failures": 4
+   },
+   "gate": "recall 4/4, false hits 0/13"
+  },
+  {
+   "rule": {
+    "rule_id": "too_many_read_cmds_no_submit",
+    "category": "turn_budget_exhausted",
+    "pattern": "read_like_cmds=\\d+/\\d+ never submitted",
+    "advice": "Stop reading after 5-6 exploration turns. If you have read README, pyproject.toml, and 2-3 key source files without submitting, commit to a plan and run code. Limit cat/head/grep chains; prefer a single python3 script that imports and inspects the repo programmatically.",
+    "source_failures": 3
+   },
+   "gate": "recall 3/3, false hits 0/14"
+  },
+  {
+   "rule": {
+    "rule_id": "grep_xargs_no_match_nonzero",
+    "category": "nonzero_exit",
+    "pattern": "xargs grep.*2>/dev/null.*\\n\\s*$|grep -n .* /work/repo/.*\\.py\\s*\\n\\s*$",
+    "advice": "grep returns exit code 1 when no lines match, causing nonzero exit. Append '|| true' to grep/xargs commands, or use 'grep ... || echo NO_MATCH'. Never rely on grep exit code to gate subsequent logic when zero matches is a valid outcome.",
+    "source_failures": 2
+   },
+   "gate": "recall 2/2, false hits 0/15"
+  },
+  {
+   "rule": {
+    "rule_id": "empty_command_timeout",
+    "category": "timeout",
+    "pattern": "^\\$\\s*\\n#.*\\n#.*\\n#.*Let's\\s*\\n",
+    "advice": "A shell cell with only comments and no executable command will hang or timeout. Always include at least one concrete command (e.g., 'ls /work/') in every submitted cell. Do not submit cells that are purely comment planning text.",
+    "source_failures": 1
+   },
+   "gate": "recall 1/1, false hits 0/16"
+  }
+ ],
+ "rejected": [
+  {
+   "rule": {
+    "rule_id": "openml_proxy_blocked",
+    "category": "egress_denied",
+    "pattern": "ProxyError.*www\\.openml\\.org|proxy refused host www\\.openml\\.org",
+    "advice": "www.openml.org is blocked; use api.openml.org or data.openml.org instead (both are allowlisted). Alternatively download datasets directly from archive.ics.uci.edu or huggingface.co. Set openml.config.server='https://api.openml.org/api/v1/xml' before calls.",
+    "source_failures": 3
+   },
+   "gate": "stale: www.openml.org is allowlisted now"
+  },
+  {
+   "rule": {
+    "rule_id": "github_api_proxy_blocked",
+    "category": "egress_denied",
+    "pattern": "ProxyError.*api\\.github\\.com|proxy refused host api\\.github\\.com",
+    "advice": "api.github.com is allowlisted but may be rate-limited or temporarily blocked. Retry with exponential backoff. For release assets, try raw.githubusercontent.com or objects.githubusercontent.com URLs directly. Avoid parsing GitHub API JSON via piped curl; use wget -q with --retry.",
+    "source_failures": 1
+   },
+   "gate": "stale: api.github.com is allowlisted now"
+  },
+  {
+   "rule": {
+    "rule_id": "broken_pipe_notebook_extraction",
+    "category": "python_error",
+    "pattern": "BrokenPipeError.*Broken pipe.*cell|print.*cell.*BrokenPipeError",
+    "advice": "BrokenPipeError when printing notebook cells means output was piped to a command that closed early. Redirect to a file instead: python3 script.py > /tmp/nb_out.txt 2>&1, then cat /tmp/nb_out.txt. Avoid piping large notebook dumps through head/tail.",
+    "source_failures": 1
+   },
+   "gate": "pattern matches none of its own failures"
+  },
+  {
+   "rule": {
+    "rule_id": "json_parse_error_piped_curl",
+    "category": "python_error",
+    "pattern": "json\\.decoder\\.JSONDecodeError|json/__init__\\.py.*loads.*\\n.*File \"<string>\"",
+    "advice": "Piped curl output may contain proxy error HTML instead of JSON. Always save curl output first: curl -s URL -o /tmp/resp.json 2>&1; then inspect with head -5 /tmp/resp.json before parsing. Check HTTP status with curl -w '%{http_code}'.",
+    "source_failures": 1
+   },
+   "gate": "pattern matches none of its own failures"
+  }
+ ],
+ "rationale": "Rules cover the five observed failure categories: (1) two egress rules for the specific blocked hosts openml and github API with actionable alternatives; (2) a late_give_up rule to detect credential/GPU blockers early; (3) a turn_budget rule targeting the 'never submitted' pattern of excessive reading; (4) a nonzero_exit rule for grep returning 1 on no match; (5) two python_error rules for BrokenPipeError in notebook dumps and JSON parse failures from piped curl; (6) a timeout rule for empty command cells."
+}

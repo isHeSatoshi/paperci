@@ -60,6 +60,7 @@ class Playbook(BaseModel):
     generation: int = 0
     rules: list[PlaybookRule] = []
     notes: str = ""
+    image: str = ""  # learned sandbox base image for this generation (envlearn)
 
 
 class ImproverProposal(BaseModel):
