@@ -259,6 +259,10 @@ def _last_line(out: str) -> str:
                  if l.strip() and " - neatlogs - " not in l and not l.startswith("Traceback")), "failed")[-300:]
 
 
+GO = re.compile(r"^\s*(go( ahead)?( with (your|the) plan)?|start|proceed|do it|do everything|yes|ok(ay)?|sure|"
+                r"run it|continue)\b[\s.!]*$", re.I)
+
+
 def on_reply(token: str, text: str) -> None:
     job = _job(token)
     _say(token, text, role="author")
@@ -281,15 +285,28 @@ def on_reply(token: str, text: str) -> None:
         _say(token, "Got it, I'll take that into account at the next step.")
         _add_guidance(job, concierge.Guidance(notes=text[:1500]))
         return
+    if job["phase"] == "intake" and GO.match(text):
+        # The quick-reply button and plain "go" never depend on the model's reading of the reply.
+        _say(token, "Starting now with my plan.")
+        _set(token, status="queued_run", phase="run")
+        return
     g = concierge.parse_reply(job["paper_id"], job["label"], _messages(token), text)
     if g.repo_url and g.repo_url != job["repo"]:
         _set(token, repo=g.repo_url)
     _add_guidance(job, g)
-    _say(token, g.reply or "Thanks, starting now.")
-    if g.finish and job["phase"] == "blocked":
+    if job["phase"] == "blocked" and g.finish:
+        _say(token, g.reply or "Thanks, writing up the review now.")
         _finish(_job(token), run=True)
-    elif g.go:
+    elif job["phase"] == "intake" and (g.go or g.finish):
+        # Nothing has run yet during intake, so "write it up as it is" still means: run, then review.
+        _say(token, g.reply if g.go and not g.finish else
+             "Understood. I'll run what can be verified here and mark the rest as not verifiable from the "
+             "available materials in the review. Starting now.")
         _set(token, status="queued_run", phase="run")
+    else:
+        _say(token, g.reply or "Okay, I'll wait. Say \"go\" whenever you're ready.")
+        if job["phase"] == "intake":
+            _set(token, asked_at=time.time())  # the author asked to wait: restart the auto-start timer
 
 
 def _add_guidance(job: dict, g: concierge.Guidance) -> None:
@@ -427,6 +444,7 @@ def _progress(job: dict) -> dict:
             "steps": [{"name": n, "why": w, "state": state[n], "detail": detail.get(n, "")} for n, w, _ in STEPS],
             "feed": feed[-80:], "claims_sealed": claims, "connections": _connections(job, raw), "messages": msgs,
             "elapsed": int((job["finished"] or time.time()) - (job["started"] or job["created"])),
+            "finished": bool(job["finished"]),
             "review": f"/job/{job['token']}/review" if job["review_path"] else None, "error": job["error"],
             "watching": bool(job["watch"]), "queued_ahead": db.q1(
                 "SELECT COUNT(*) n FROM web_jobs WHERE status IN ('queued_prepare','queued_run','running') AND created<?",
@@ -536,7 +554,11 @@ const G={{'+':'ok','!':'warn','x':'fail','~':'heal','>':'','.':'','=':''}};
 function esc(s){{return (s||'').replace(/[&<>]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]))}}
 function md(s){{s=esc(s);s=s.replace(/\\*\\*(.+?)\\*\\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/(^|\\s)_(.+?)_(\\s|$)/g,'$1<i>$2</i>$3');
 return s.split('\\n').map(l=>/^\\s*(\\d+\\.|-)\\s/.test(l)?`<div class=li>${{l}}</div>`:l).join('<br>').replace(/<br><div/g,'<div').replace(/<\\/div><br>/g,'</div>');}}
-let shown=false,nmsg=-1,busy=false;
+let shown=false,nmsg=-1,busy=false,EL=null;
+// The server sends elapsed seconds with each poll; the browser counts between polls so the clock never stutters.
+function clock(){{if(!EL)return;const t=EL.base+(EL.live?Math.floor((Date.now()-EL.at)/1000):0);
+document.getElementById('el').textContent=Math.floor(t/60)+':'+String(t%60).padStart(2,'0');}}
+setInterval(clock,1000);
 document.addEventListener('keydown',e=>{{if(e.target.id=='rt'&&e.key=='Enter'&&!e.shiftKey){{e.preventDefault();send();}}}});
 async function send(t){{const v=t||document.getElementById('rt').value.trim();if(!v||busy)return false;busy=true;
 await fetch('/api/job/{token}/reply',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{text:v}})}});
@@ -553,7 +575,7 @@ const qr=document.getElementById('qr');qr.innerHTML=j.status=='awaiting_author'&
 (j.phase=='done'&&!j.watching&&j.review?'<button type=button onclick="send(\\'Yes, watch my repo.\\')">Yes, watch my repo</button>':'');
 document.getElementById('steps').innerHTML=j.steps.map(s=>`<div class="st ${{s.state}}"><div class=dot>${{s.state=='ok'?'&#10003;':s.state=='fail'?'!':s.state=='wait'?'?':s.state=='warn'?'~':''}}</div><div><div class=n>${{s.name}}</div><div class=w>${{s.why}}</div>${{s.detail?`<div class=d>${{esc(s.detail)}}</div>`:''}}</div></div>`).join('');
 if(j.connections.length)document.getElementById('conns').innerHTML=j.connections.map(c=>`<span class="chip ${{c.state}}">${{c.state=='blocked'?'&#10007; ':c.state=='off'?'':'&#10003; '}}${{esc(c.host)}}</span>`).join('');
-document.getElementById('cl').textContent=j.claims_sealed??'-';const m=Math.floor(j.elapsed/60),s=j.elapsed%60;document.getElementById('el').textContent=m+':'+String(s).padStart(2,'0');
+document.getElementById('cl').textContent=j.claims_sealed??'-';EL={{base:j.elapsed,at:Date.now(),live:!j.finished}};clock();
 document.getElementById('tn').textContent=j.feed.length;document.getElementById('at').textContent=j.attempt||'-';
 const f=document.getElementById('feed');if(j.feed.length){{f.innerHTML=j.feed.map(x=>`<div><span class=t>${{x.t}}</span><span class="g ${{G[x.g]||''}}">${{x.g}}</span>${{esc(x.text)}}</div>`).join('');f.scrollTop=f.scrollHeight;}}
 if(j.review&&j.status=='done'&&!shown){{shown=true;document.getElementById('rev').innerHTML=`<div class=box style="border-color:#bbf7d0;background:#f0fdf4"><b>Your review</b> · <a href="${{j.review}}" target=_blank>open full page</a> · <a href="${{j.review}}.md" target=_blank>Markdown</a> · <a href="${{j.review}}.svg" target=_blank>badge</a></div><iframe src="${{j.review}}"></iframe>`;}}

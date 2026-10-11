@@ -265,6 +265,14 @@ def test_author_preempts_background_job():
         ops.author_waiting, ops._remove_sandboxes, ops.EVENTS, ops.OPS = saved
 
 
+def test_go_replies_start_the_run():
+    from paperci.web import GO
+    for t in ("Go ahead with your plan.", "go", "Go!", "do everything", "ok", "start", "yes"):
+        assert GO.match(t), t
+    for t in ("go with claim c3 first", "no I can't, you understand from the paper", "wait", "use the v2 config"):
+        assert not GO.match(t), t
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
