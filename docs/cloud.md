@@ -20,6 +20,30 @@ failures every night, breaks itself on purpose to prove it can recover, and repa
 Only one sandbox job runs at a time (`paperci.web` worker), so author jobs, autopilot and nightly work never
 compete for the 2 vCPUs and 8 GB of RAM.
 
+## Who heals the healer
+
+The self-healing layer is built to stay simpler than what it heals, and each layer is supervised by a simpler one:
+
+| Failure | What catches it | Proven by drill (2026-10-11, live server) |
+|---|---|---|
+| Agent process dies (crash, OOM kill) | systemd `Restart=always`, no start limit; `OOMScoreAdjust=-500` so the kernel kills a sandbox first | SIGKILL -> healthy again in 6 s |
+| Agent alive but hung (deadlock, stuck job) | Worker heartbeat + per-job deadlines in `/healthz` (503); watchdog restarts after 2 failed checks | SIGSTOP -> detected and restarted |
+| A job runs forever | Hard limits (prepare 30 min, run/cycle 2 h, nightly 1 h) kill the whole process tree; orphaned sandboxes are swept | unit-tested |
+| A job keeps crashing the agent | Schedule advances before work starts; author jobs retried at most twice; autopilot never re-picks a paper that had any build | unit-tested |
+| Watchdog itself broken (bug, bad deploy, broken venv) | Every check is isolated; if the Python watchdog crashes or hangs, a plain-shell fallback healer runs (no Python, no repo imports) | crash injected -> fallback restarted the agent |
+| Docker daemon down | Watchdog restarts Docker, recreates proxy and network | Docker stopped -> Docker and egress proxy back |
+| Healer making things worse | Fixed list of safe actions (no LLM decides repairs); never prunes images in use or the build cache while a job runs; at most 3 restarts/hour, then one rollback, then it stops and asks for a human | rate limit in code |
+| Bad deploy | `deploy/deploy.sh`: deps + import check + offline tests + health check, otherwise automatic rollback; the watchdog can also roll back to the last good commit | syntax error injected -> rejected, rolled back, healthy |
+| Guest OS frozen | `kernel.panic=10`, `panic_on_oops`, `softlockup_panic` reboot the VM; all services start at boot | not drilled (would reboot the server) |
+| Host hardware failure | EC2 automatic recovery (`AutoRecovery: default`) | AWS-managed |
+| Whole server gone | `.github/workflows/uptime.yml` checks `/healthz` from outside AWS every 30 min; a failure emails the repo owner | runs on schedule |
+
+Re-run the drills any time: `bash deploy/healer-drills.sh` (refuses while a paper is running). Results go to the
+board under "Who heals the healer".
+
+What is still not covered: an AWS account-level action (the organizers stopping or terminating the instance,
+or the SCP changing), and a human not reading the uptime email. CloudWatch alarms are denied in this account.
+
 ## Spend controls
 
 - LLM: `PAPERCI_DAILY_CAP` (USD per IST day, counted from deploy time) on top of the existing per-paper,
