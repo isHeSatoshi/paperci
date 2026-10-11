@@ -24,6 +24,9 @@ badge `.svg`): a pipeline strip, a walkthrough of how the environment was built,
 
 ![PaperCI review (anonymized)](docs/img/review.png)
 
+Browse every review PaperCI has produced (anonymized, open the HTML locally or via GitHub Pages):
+[`docs/reviews/index.html`](docs/reviews/index.html).
+
 Why you can trust a PaperCI review:
 - **The agent that builds never sees the numbers it has to hit.** Claims are extracted from the paper text with
   verbatim quotes and sealed (sha256) before the build starts.
