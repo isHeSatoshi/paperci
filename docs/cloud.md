@@ -4,8 +4,10 @@ From 2026-10-11 until 2026-10-16 23:59 IST, PaperCI runs continuously on one EC2
 account. Nobody needs to start it. It watches arXiv, reproduces new papers, writes reviews, learns from its own
 failures every night, breaks itself on purpose to prove it can recover, and repairs whatever goes wrong.
 
-- Live board (public, anonymized): `https://44-215-70-124.sslip.io/board`
-- Author app (invite code required): `https://44-215-70-124.sslip.io/`
+- Live board (public, anonymized): `https://paperci.vercel.app/board`
+- Author app (invite code required): `https://paperci.vercel.app/`
+- Vercel is the front door only (`deploy/vercel`): every request is rewritten at the edge to the EC2 agent at
+  `https://44-215-70-124.sslip.io`, which still does all the work (Docker sandboxes and long jobs can't run on Vercel).
 
 ## What runs
 

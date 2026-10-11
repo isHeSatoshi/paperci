@@ -7,7 +7,7 @@ code. It rebuilds the paper's environment from scratch in a fresh sandbox, re-ru
 
 ### It is running right now
 
-Until 2026-10-16 23:59 IST, PaperCI runs by itself on AWS. **Live board: https://44-215-70-124.sslip.io/board**
+Until 2026-10-16 23:59 IST, PaperCI runs by itself on AWS. **Live board: https://paperci.vercel.app/board**
 (anonymized). Every 90 minutes it pulls new arXiv papers with code, triages them, seals their claims and
 reproduces the freshest one. Every night it learns new recovery rules from the day's failures (gated; held-out
 papers never feed it), runs a chaos drill against itself, and writes a digest. A watchdog repairs Docker, the

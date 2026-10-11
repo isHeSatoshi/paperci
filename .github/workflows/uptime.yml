@@ -16,7 +16,7 @@ jobs:
           # the server powers itself off at 2026-10-16 18:29 UTC; after that silence is expected
           [ "$(date -u +%s)" -gt "$(date -u -d '2026-10-16 18:35' +%s)" ] && { echo "credit window over"; exit 0; }
           for i in 1 2 3; do
-            body=$(curl -s -m 20 -w '\n%{http_code}' https://44-215-70-124.sslip.io/healthz) && code=$(echo "$body" | tail -n1)
+            body=$(curl -s -m 20 -w '\n%{http_code}' https://paperci.vercel.app/healthz) && code=$(echo "$body" | tail -n1)
             echo "$body"
             [ "$code" = "200" ] && echo "$body" | head -n1 | python3 -c "import json,sys; d=json.load(sys.stdin); a=d.get('watchdog_age_s'); sys.exit(0 if a is None or a < 900 else 1)" && exit 0
             sleep 60

@@ -604,7 +604,9 @@ async def submit(request: Request, email: str = Form(...), arxiv: str = Form("")
     email, arxiv, repo = email.strip(), arxiv.strip(), repo.strip()
     if INVITES and invite.strip() not in INVITES:
         return landing("That invite code is not valid. PaperCI is in early access; ask the team for a code.", email, arxiv, repo)
-    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0].strip()
+    # Behind the Vercel front door Caddy sees Vercel's edge IP; Vercel passes the visitor's IP in its own header.
+    ip = (request.headers.get("x-vercel-forwarded-for") or request.headers.get("x-forwarded-for")
+          or (request.client.host if request.client else "?")).split(",")[0].strip()
     recent = [t for t in SUBMITS.get(ip, []) if time.time() - t < 3600]
     if len(recent) >= 3:
         return landing("Too many submissions from your network in the last hour. Please try again later.", email, arxiv, repo)
