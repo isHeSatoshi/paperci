@@ -81,6 +81,13 @@
 - Registry: 2 validated tasks (1 held-out toy-scale, 1 dev toy-scale), both "too hard for cheap solver" (0/2 Haiku). 4 packages rejected (3 integrity, 1 oracle).
 - Total LLM spend: $5.44 of the $20 key (ledger = proxy-reported).
 
+## Entire checkpoints (session reasoning attached to commits)
+- **01M4KP3DNR0TF8TWQE611MJJYV** on `e70be0f` (verifier, packager, oracle, self-improvement loop):
+  https://entire.io/gh/isHeSatoshi/paperci/commit/e70be0fdb9cc189abc7343dfe7f934f97d53f226
+- **01M4MKYQ3938RM8FJ5K9ETQ55A** on `e3b748d` (self-audit, judge hardening, re-verification, chaos recovery):
+  https://entire.io/gh/isHeSatoshi/paperci/commit/e3b748dd2178ffbdeb24eca5e159c7fb0b2b5ae1
+- Transcripts were secret-scanned before attaching (0 hits for all keys and the GitHub token).
+
 ## Demo
 - Local: `python -m paperci dashboard` -> registry/index.html (private), `--public` -> docs/dashboard_public.html.
 - Script: docs/demo-script.md.
