@@ -55,6 +55,11 @@ def _run_stage(arxiv_id: str, stage: str, label: str, fn, trace_id: str | None):
         except ledger.BudgetExceeded:
             db.save_stage(arxiv_id, stage, label, status="budget", finished_at=time.time())
             raise
+        except sources.RateLimited as e:
+            # Retrying now would hit the same quota; the caller decides when to come back.
+            db.save_stage(arxiv_id, stage, label, status="error", error=str(e), attempts=attempts - 1,
+                          finished_at=time.time())
+            raise
         except Exception as e:
             last_exc = e
             tb = traceback.format_exc()[-3000:]

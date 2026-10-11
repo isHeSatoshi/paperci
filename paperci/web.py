@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from . import concierge, db, ledger, sources, tracing
-from .config import REGISTRY_DIR, ROOT
+from .config import MODELS, REGISTRY_DIR, ROOT
 
 WEB = REGISTRY_DIR / "web"
 JOBS, OUTBOX, UPLOADS = WEB / "jobs", WEB / "outbox", WEB / "uploads"
@@ -318,7 +318,10 @@ def _head_sha(repo: str) -> str | None:
     m = sources.GH_RE.match(repo or "")
     if not m:
         return None
-    r = sources.gh_api(f"repos/{m.group(1)}/{m.group(2)}/commits/HEAD")
+    try:
+        r = sources.gh_api(f"repos/{m.group(1)}/{m.group(2)}/commits/HEAD")
+    except sources.RateLimited:
+        return None
     return r.json().get("sha") if r.status_code == 200 else None
 
 
@@ -480,7 +483,7 @@ def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
 <div class=nav><a class=logo href="/">Paper<span>CI</span></a><div><a class=l href="/board">Live board</a><a class=l href="/#how">How it works</a>
-<a class=l href="/examples/index.html">Example reviews</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
+<a class=l href="/icml">ICML 2026 results</a><a class=l href="/examples/index.html">Earlier runs</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
 {body}</body></html>""")
 
 
@@ -626,85 +629,83 @@ def board_review(name: str):
     return FileResponse(REVIEWS / name, media_type="text/html")
 
 
-CHOICES = {"paperci": "PaperCI is right", "hf": "Hugging Face consensus is right", "both": "Both partly right",
-           "unclear": "Can't tell from the evidence"}
+VERDICT_TXT = {"verified": "reproduced", "falsified": "did not reproduce", "toy": "toy scale only"}
+AUTOMATED_NOTE = ("Automated result: PaperCI ran on a 2-vCPU CPU-only machine without internet access during runs, so "
+                  "it may fail or disagree for reasons unrelated to the paper. It is not a judgement of the authors' work.")
 
 
-def _reviewer(code: str) -> str:
-    # Named-paper verdicts are never public: the review queue needs an invite code like submissions do.
-    if INVITES and code.strip() not in INVITES:
-        raise HTTPException(403, "invite code required")
-    return hashlib.sha256(code.strip().encode()).hexdigest()[:8]
-
-
-@app.get("/icml/review", response_class=HTMLResponse)
-def icml_review(code: str = "", show: str = "todo"):
+@app.get("/icml", response_class=HTMLResponse)
+def icml_page():
     from . import icml_eval
-    if INVITES and code.strip() not in INVITES:
-        return _page("ICML eval review", "<div class=wrap style='padding:40px 0'><h1>ICML eval review</h1>"
-                     "<form><input name=code placeholder='invite code' required> <button class=btn2>Open</button></form></div>")
-    _reviewer(code)
     e = html.escape
-    q = f"code={e(code)}"
     s = icml_eval.score()
-    xs = icml_eval.items()
-    todo = [x for x in xs if not x["human"] and (x["agree"] is False or not x["decided"])]
-    shown = todo if show == "todo" else xs
+    xs = sorted(icml_eval.items(), key=lambda x: (x["agree"] is not True, x["title"]))
+    st = icml_eval._load(icml_eval.STATE, {"runs": []})
+    cands = {c["arxiv"]: c for c in icml_eval._load(icml_eval.CANDS, [])}
+    pct = (lambda v: f"{v * 100:.0f}%" if v is not None else "-")
     cards = []
-    for x in shown:
+    for x in xs:
         r = x["run"]["result"]
         hf_claims = "".join(
-            f"<li>{e(c['claim'][:240])} <span class=muted>{e(json.dumps(c['verdicts']))}</span>"
+            f"<li>{e(c['claim'][:260])} <span class=muted>{e(', '.join(f'{k} x{v}' for k, v in c['verdicts'].items()))}</span>"
             + "".join(f"<div class=muted style='margin:4px 0 0 10px'>[{e(ev['verdict'])}] {e(ev['text'][:300])} "
-                      f"<a href='https://huggingface.co/spaces/{e(ev['space'])}' target=_blank>logbook</a></div>"
+                      f"<a href='https://huggingface.co/spaces/{e(ev['space'])}' target=_blank rel=noopener>logbook</a></div>"
                       for ev in c["evidence"][:1]) + "</li>" for c in x["claims"][:6])
-        ours = "".join(f"<li>{e(str(c['id']))} {e(str(c['metric'] or ''))}: claimed {e(str(c['claimed']))}, measured "
+        ours = "".join(f"<li>{e(str(c['metric'] or c['id']))}: paper {e(str(c['claimed']))}, PaperCI measured "
                        f"{e(str(c['measured']))} (n={e(str(c['n']))}, within tolerance: {e(str(c['within']))})</li>"
-                       for c in r["claims"]) or "<li class=muted>no metric measured</li>"
-        rev = (f" &middot; <a href='/icml/r/{e(x['arxiv'])}?{q}' target=_blank>full PaperCI review</a>"
+                       for c in r.get("claims") or []) or "<li class=muted>no metric was measured</li>"
+        if x["decided"]:
+            tag = ("<span style='color:#16a34a;font-weight:700'>agrees</span>" if x["agree"]
+                   else "<span style='color:#dc2626;font-weight:700'>disagrees</span>")
+        else:
+            tag = "<span class=muted style='font-weight:700'>no decision</span>"
+        rev = (f" &middot; <a href='/icml/r/{e(x['arxiv'])}' target=_blank>full PaperCI review</a>"
                if x["run"].get("review") else "")
-        tag = ("agrees" if x["agree"] else "disagrees") if x["decided"] else "PaperCI made no decision"
-        done = f"<div class=muted>Reviewed: {e(CHOICES.get(x['human']['choice'], x['human']['choice']))}</div>" if x["human"] else ""
-        buttons = "".join(f"<button class=btn2 name=choice value={k} style='margin:4px 6px 0 0'>{e(v)}</button>"
-                          for k, v in CHOICES.items())
-        cards.append(f"""<div class=box><h4><a href="https://arxiv.org/abs/{e(x['arxiv'])}" target=_blank>{e(x['title'])}</a>
-<span class=muted>arXiv {e(x['arxiv'])} &middot; {e(x.get('area') or '')}</span></h4>
-<div><b>Hugging Face consensus: {e(x['label'])}</b> ({int(x['consensus_share'] * 100)}% of {x['n_logbooks']}
-medium/high-quality logbooks) &middot; <b>PaperCI: {e(r['verdict'] or '-')}</b> ({e(tag)}){rev}</div>
-<div class=muted style="margin:6px 0">PaperCI's reason: {e(r['reason'][:400])} &middot; build {e(str(r['build']))}, {e(str(r['turns']))} turns</div>
-<details><summary>Hugging Face claims and evidence</summary><ul>{hf_claims}</ul></details>
-<details><summary>PaperCI measurements</summary><ul>{ours}</ul></details>{done}
-<form method=post action="/icml/label"><input type=hidden name=code value="{e(code)}"><input type=hidden name=arxiv value="{e(x['arxiv'])}">
-<textarea name=note rows=2 placeholder="Why? (optional, kept with the label)" style="width:100%;margin-top:8px"></textarea>{buttons}</form></div>""")
-    head = (f"<p>{s['runs']} papers run blind, PaperCI decided on {s['decided']} (coverage {s['coverage']}), agreed with the "
-            f"Hugging Face consensus on {s['agree']} of those (agreement {s['agreement']}). {s['human_reviewed']} human-reviewed: "
-            f"PaperCI right {s['human_says_paperci_right']}, Hugging Face right {s['human_says_hf_right']}.</p>"
-            f"<p><a href='/icml/review?{q}&show=todo'>needs review ({len(todo)})</a> &middot; <a href='/icml/review?{q}&show=all'>all ({len(xs)})</a></p>")
-    return _page("ICML eval review", f"<div class=wrap style='padding:20px 0 60px'><h1>ICML 2026 external eval: human review</h1>"
-                 "<p class=muted>Hugging Face labels come from an LLM judge reading community agent logbooks; your decision "
-                 "turns a disagreement into a gold label. Private: named-paper verdicts are only shown here.</p>"
-                 + head + ("".join(cards) or "<p class=muted>Nothing waiting for review.</p>") + "</div>")
+        logs = " ".join(f"<a href='https://huggingface.co/spaces/{e(sp)}' target=_blank rel=noopener>{i + 1}</a>"
+                        for i, sp in enumerate(x["logbooks"][:5]))
+        cards.append(f"""<div class=box><h4><a href="https://arxiv.org/abs/{e(x['arxiv'])}" target=_blank rel=noopener>{e(x['title'])}</a>
+<span class=muted> arXiv {e(x['arxiv'])} &middot; {e(x.get('area') or '')}</span></h4>
+<div>Hugging Face community: <b>{e(VERDICT_TXT.get(x['label'], x['label']))}</b> ({int(x['consensus_share'] * 100)}% of
+{x['n_logbooks']} independent logbooks; {logs}) &middot; PaperCI: <b>{e(r.get('verdict') or '-')}</b> &middot; {tag}{rev}</div>
+<div class=muted style="margin:6px 0">PaperCI's reason: {e((r.get('reason') or r.get('give_up') or '')[:400])} &middot;
+build {e(str(r.get('build')))}, {e(str(r.get('turns')))} agent turns</div>
+<details><summary>Claims and evidence from the community reproductions</summary><ul>{hf_claims}</ul></details>
+<details><summary>What PaperCI measured</summary><ul>{ours}</ul></details></div>""")
+    busy = [cands.get(r["arxiv"], {}).get("title", r["arxiv"]) for r in st["runs"] if r["status"] == "pending"]
+    queue = (f"<p class=muted>In the queue ({len(busy)}): {e('; '.join(t[:70] for t in busy[:20]))}</p>" if busy else "")
+    head = f"""<div class=kpis style='grid-template-columns:repeat(5,1fr)'>
+<div class=kpi><b>{s['runs']}</b>papers run blind</div><div class=kpi><b>{s['built']}</b>built and run offline</div>
+<div class=kpi><b>{pct(s['coverage'])}</b>reached a verdict</div><div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div>
+<div class=kpi><b>{e(s['verified_recovered'])} &middot; {e(s['falsified_recovered'])}</b>verified &middot; falsified recovered</div></div>"""
+    return _page("PaperCI on ICML 2026 papers", f"""<div class=wrap style='padding:20px 0 60px'>
+<h1>PaperCI on ICML 2026 papers</h1>
+<p>The answer key is <a href="https://huggingface.co/datasets/ICML-2026-agent-repro/verdicts" target=_blank rel=noopener>Hugging
+Face's ICML 2026 Open Reproductions</a>: community teams reproduced papers claim by claim, and a GLM-5.2 judge
+graded their logbooks. We kept only papers where at least two medium- or high-quality logbooks agreed (75% or more) that
+the paper was verified or falsified. PaperCI runs each one blind: no agent ever sees the community verdict. Builder model:
+{e(MODELS['builder'])}; verifier model: {e(MODELS['verifier'])}.</p>
+<p class=muted>{e(AUTOMATED_NOTE)} The community labels come from an LLM judge, so they can be wrong too.
+"No decision" means PaperCI could not build or measure the paper within its limits.</p>{head}{queue}
+{''.join(cards) or "<p class=muted>The first results appear here as runs finish.</p>"}</div>""")
 
 
-@app.post("/icml/label")
-def icml_label(code: str = Form(""), arxiv: str = Form(...), choice: str = Form(...), note: str = Form("")):
-    from . import icml_eval
-    who = _reviewer(code)
-    if choice not in CHOICES or not re.fullmatch(r"\d{4}\.\d{4,5}", arxiv):
-        raise HTTPException(400)
-    icml_eval.add_label(arxiv, choice, note, who)
-    return RedirectResponse(f"/icml/review?code={code}", status_code=303)
+@app.get("/icml/review")
+def icml_review_redirect():
+    return RedirectResponse("/icml", status_code=301)
 
 
 @app.get("/icml/r/{arxiv}")
-def icml_review_file(arxiv: str, code: str = ""):
+def icml_review_file(arxiv: str):
     from . import icml_eval
-    _reviewer(code)
     run = next((r for r in icml_eval._load(icml_eval.STATE, {"runs": []})["runs"] if r["arxiv"] == arxiv), None)
     p = Path(run["review"]) if run and run.get("review") else None
     if not p or not p.exists() or REGISTRY_DIR.resolve() not in p.resolve().parents:
         raise HTTPException(404)
-    return FileResponse(p, media_type="text/html")
+    banner = (f"<div style='background:#fef3c7;border-bottom:1px solid #f59e0b;padding:10px 16px;font:14px system-ui'>"
+              f"{html.escape(AUTOMATED_NOTE)} <a href='/icml'>All ICML 2026 results and the community verdicts</a></div>")
+    page = p.read_text(encoding="utf-8")
+    page = re.sub(r"(<body[^>]*>)", lambda m: m.group(1) + banner, page, count=1)
+    return HTMLResponse(page)
 
 
 @app.post("/submit")

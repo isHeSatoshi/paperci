@@ -11,7 +11,8 @@ A paper is a reference only if at least two medium- or high-quality logbooks exi
 agree on the paper-level outcome: **verified** (every claim verified) or **falsified** (some claim falsified).
 Contested and toy-only papers are excluded for now. On the frozen data: 116 papers (47 verified, 69 falsified).
 
-These labels are **silver**: an LLM judge read agent write-ups. Only a human decision makes a label gold.
+The consensus is the answer key. It comes from an LLM judge reading agent write-ups, so it can be wrong; that
+is why only papers with agreement between independent teams are used.
 
 ## Protocol
 
@@ -22,17 +23,24 @@ These labels are **silver**: an LLM judge read agent write-ups. Only a human dec
 3. Blind runs: the full pipeline (build, offline verification, seed reruns, verdict), without packaging.
    They run as preemptible background jobs, so author submissions still go first.
 4. Score: PaperCI verified -> verified, falsified-candidate -> falsified, toy-scale -> toy; anything else is
-   "no decision". Reported: coverage (how often PaperCI decides) and agreement when it does.
-5. Human review: every disagreement and every no-decision goes to `/icml/review` (invite code required,
-   because it names papers). The reviewer picks "PaperCI is right", "Hugging Face consensus is right",
-   "Both partly right" or "Can't tell", with a note. Those become gold labels in `data/icml/labels.jsonl`.
+   "no decision". Reported: coverage (how often PaperCI decides), agreement when it does, and how many
+   verified / falsified papers it recovers end to end (no decision counts as a miss).
+5. Results are public by name at `/icml` (the papers and community verdicts are already public on Hugging
+   Face), each marked as an automated result, with PaperCI's full review page and links to the logbooks.
 6. Daily golden check: one paper where PaperCI and the consensus agreed is re-verified every night; a changed
    verdict is an incident on the board.
 
+## Models
+
+All roles run through the Factory API key (`droid exec`, locked down). The always-on roles (triage, claim
+sealing, verifier, concierge) use `glm-5.3-flash`. The builder, solver, nightly improver and evolution
+proposer use `deepseek-v4.1-flash` at high reasoning (`PAPERCI_MODEL_BUILDER` / `PAPERCI_MODEL_SOLVER`
+override `PAPERCI_MODEL_ALL`), so builder and verifier are different model families again.
+
 ## Known biases
 
-- All PaperCI roles currently run on `glm-5.3-flash` (Factory), and the Hugging Face judge is GLM-5.2: same
-  model family, so agreement may be inflated. The builder/verifier family split is also off in this mode.
+- The verifier is GLM-5.3-Flash and the Hugging Face judge is GLM-5.2: same model family, so agreement may be
+  inflated.
 - Hugging Face participants had GPUs; PaperCI is CPU-only, so it will often decline (coverage < 100%) or reach
   only toy-scale evidence on papers they could verify at scale.
 - Claim sets differ: Hugging Face claims are text extracted by their indexer, PaperCI's are numeric claims it

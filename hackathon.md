@@ -137,9 +137,12 @@
 ### 2026-10-11 (Sun) late night IST: an external eval from real papers, and one model for everything
 - External eval against Hugging Face's ICML 2026 Open Reproductions (`docs/icml-eval.md`): 116 papers where
   independent community teams agreed (47 verified, 69 falsified) become blind reference cases; PaperCI never
-  sees their verdicts; every disagreement goes to an invite-gated human review page and the decision becomes a
-  gold label. Two runnable verified papers replace the old 2-paper evolution benchmark; a daily golden re-check
-  catches regressions.
+  sees their verdicts. Two runnable verified papers replace the old 2-paper evolution benchmark; a daily golden
+  re-check catches regressions.
+- Changed course on the operator's call: no human review queue; the community consensus is the answer key, and
+  results are public by paper name at `/icml` (the papers and verdicts are already public on Hugging Face),
+  each marked as automated. Builder, solver, improver and evolution proposer move to DeepSeek V4.1 Flash (high
+  reasoning); always-on roles and the verifier stay on GLM-5.3-Flash, which restores the family split.
 - All roles moved to GLM-5.3-Flash through the Factory API key (no chat-completions endpoint exists, so each
   call is one locked-down `droid exec`: empty working directory, only TodoWrite, tool calls returned as JSON).
   Trade-offs, stated on purpose: the builder/verifier model-family split is off, and the Hugging Face judge is

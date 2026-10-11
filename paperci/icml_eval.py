@@ -3,11 +3,11 @@
 Hugging Face's community (1,221 people, coding agents, GPUs) reproduced 2,226 ICML 2026 papers claim by claim;
 a GLM-5.2 judge froze 35,908 claim verdicts in ICML-2026-agent-repro/verdicts. We take papers where at least
 two medium/high-quality logbooks agree (>= 75%) on "verified" or "falsified", reproduce them blind (their
-verdicts are never shown to any agent), score agreement, and send every disagreement to a human reviewer.
-Human decisions become gold labels, so the eval improves every time it runs.
+verdicts are never shown to any agent) and score agreement against that consensus.
 
-Those labels are silver: an LLM judge read agent logbooks. Only the human review turns them into gold.
-Verdicts about named papers stay private (review page behind an invite code); public output is aggregate.
+The reference labels come from an LLM judge reading agent logbooks, so they can be wrong too. These papers and
+the community verdicts are already public on Hugging Face, so results are shown under the real paper names
+(/icml), each marked as an automated result.
 
     python -m paperci.icml_eval fetch | screen [n] | queue [n] | step | score | status
 """
@@ -24,13 +24,12 @@ from pathlib import Path
 
 import requests
 
-from . import db, ledger, ops, tracing
+from . import db, ledger, ops, sources, tracing
 from .config import DATA_DIR, ROOT
 
 ICML = DATA_DIR / "icml"
 CANDS = ICML / "candidates.json"
 STATE = ICML / "state.json"
-LABELS = ICML / "labels.jsonl"
 BENCH_FILE = ICML / "bench.json"
 HF = "https://huggingface.co/datasets/ICML-2026-agent-repro"
 SPLIT = "icml"
@@ -114,9 +113,8 @@ def fetch() -> dict:
 
 # ---------------------------------------------------------------- 2. screen (fetch code, triage, seal claims)
 def screen(n: int = 40) -> dict:
-    from . import sources
-    from .pipeline import prepare
     cands = _load(CANDS, [])
+    _unscreen_rate_limited(cands)
     done = 0
     for c in cands:
         if done >= n:
@@ -124,32 +122,56 @@ def screen(n: int = 40) -> dict:
         if c.get("screen"):
             continue
         done += 1
-        try:
-            row = db.q1("SELECT split FROM papers WHERE arxiv_id=?", (c["arxiv"],))
-            if row and row["split"] != SPLIT:
-                c["screen"] = {"status": "skip", "why": f"already in PaperCI as split {row['split']}"}
-                continue
-            if not row:
-                p = sources.fetch_paper(c["arxiv"])
-                if not p["repo_url"]:
-                    c["screen"] = {"status": "no_code"}
-                    continue
-                p["split"] = SPLIT
-                db.upsert_paper(p)
-            prep = prepare(c["arxiv"])
-            ok = prep.get("triage") == "accept" and (prep.get("n_claims") or 0) > 0
-            c["screen"] = {"status": "runnable" if ok else "not_runnable", "triage": prep.get("triage"),
-                           "n_claims": prep.get("n_claims")}
-        except ledger.BudgetExceeded as ex:
-            c["screen"] = None
-            _save(CANDS, cands)
-            return {"status": "budget", "why": str(ex)}
-        except Exception as ex:
-            c["screen"] = {"status": "error", "why": f"{type(ex).__name__}: {str(ex)[:160]}"}
+        while True:
+            try:
+                _screen_one(c)
+                break
+            except sources.RateLimited as ex:
+                wait = min(3700.0, max(30.0, ex.reset - time.time() + 10))
+                print(f"GitHub rate limit; sleeping {wait:.0f}s", flush=True)
+                time.sleep(wait)
+            except ledger.BudgetExceeded as ex:
+                c["screen"] = None
+                _save(CANDS, cands)
+                return {"status": "budget", "why": str(ex)}
+            except Exception as ex:
+                c["screen"] = {"status": "error", "why": f"{type(ex).__name__}: {str(ex)[:160]}"}
+                break
         _save(CANDS, cands)
     _assign_roles(cands)
     _save(CANDS, cands)
     return dict(collections.Counter((c.get("screen") or {}).get("status", "unscreened") for c in cands))
+
+
+def _unscreen_rate_limited(cands: list[dict]) -> None:
+    """Before RateLimited existed, a quota 403 was cached as "repo unavailable" and the paper rejected."""
+    for c in cands:
+        if (c.get("screen") or {}).get("status") != "not_runnable":
+            continue
+        t = db.q1("SELECT output FROM stages WHERE arxiv_id=? AND stage='triage' AND status='done'", (c["arxiv"],))
+        if t and "repo api 403" in (t["output"] or ""):
+            db.ex("DELETE FROM stages WHERE arxiv_id=? AND stage IN ('snapshot', 'triage', 'claims')", (c["arxiv"],))
+            c["screen"] = None
+
+
+def _screen_one(c: dict) -> None:
+    """Sets c["screen"]. RateLimited and BudgetExceeded propagate so the caller can wait or stop."""
+    from .pipeline import prepare
+    row = db.q1("SELECT split FROM papers WHERE arxiv_id=?", (c["arxiv"],))
+    if row and row["split"] != SPLIT:
+        c["screen"] = {"status": "skip", "why": f"already in PaperCI as split {row['split']}"}
+        return
+    if not row:
+        p = sources.fetch_paper(c["arxiv"])
+        if not p["repo_url"]:
+            c["screen"] = {"status": "no_code"}
+            return
+        p["split"] = SPLIT
+        db.upsert_paper(p)
+    prep = prepare(c["arxiv"])
+    ok = prep.get("triage") == "accept" and (prep.get("n_claims") or 0) > 0
+    c["screen"] = {"status": "runnable" if ok else "not_runnable", "triage": prep.get("triage"),
+                   "n_claims": prep.get("n_claims")}
 
 
 def _assign_roles(cands: list[dict]) -> None:
@@ -255,29 +277,9 @@ def ours(arxiv: str, label: str) -> dict | None:
             "give_up": build.get("give_up_category"), "turns": build.get("turns"), "claims": claims}
 
 
-# ---------------------------------------------------------------- 4. score + human labels
-def labels() -> dict[str, dict]:
-    out: dict[str, dict] = {}
-    if LABELS.exists():
-        for line in LABELS.read_text(encoding="utf-8").splitlines():
-            try:
-                x = json.loads(line)
-                out[x["arxiv"]] = x  # latest decision wins
-            except Exception:
-                continue
-    return out
-
-
-def add_label(arxiv: str, choice: str, note: str, reviewer: str) -> None:
-    ICML.mkdir(parents=True, exist_ok=True)
-    with open(LABELS, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"arxiv": arxiv, "choice": choice, "note": note[:2000], "reviewer": reviewer,
-                            "ts": time.time()}) + "\n")
-
-
+# ---------------------------------------------------------------- 4. score against the HF consensus
 def items() -> list[dict]:
     cands = {c["arxiv"]: c for c in _load(CANDS, [])}
-    hl = labels()
     out = []
     for r in _load(STATE, {"runs": []})["runs"]:
         c = cands.get(r["arxiv"])
@@ -285,7 +287,7 @@ def items() -> list[dict]:
             continue
         mine = OURS.get(r["result"]["verdict"])
         out.append({**c, "run": r, "ours": mine, "decided": mine is not None,
-                    "agree": mine == c["label"] if mine else None, "human": hl.get(r["arxiv"])})
+                    "agree": mine == c["label"] if mine else None})
     return out
 
 
@@ -293,13 +295,14 @@ def score() -> dict:
     xs = items()
     dec = [x for x in xs if x["decided"]]
     conf = collections.Counter(f"HF {x['label']} / PaperCI {x['ours'] or 'no decision'}" for x in xs)
-    human = [x for x in xs if x["human"]]
+    by = {lab: [x for x in xs if x["label"] == lab] for lab in ("verified", "falsified")}
     s = {"runs": len(xs), "decided": len(dec), "coverage": round(len(dec) / len(xs), 2) if xs else None,
          "agree": sum(1 for x in dec if x["agree"]), "agreement": round(sum(1 for x in dec if x["agree"]) / len(dec), 2) if dec else None,
-         "confusion": dict(conf), "human_reviewed": len(human),
-         "human_says_paperci_right": sum(1 for x in human if x["human"]["choice"] == "paperci"),
-         "human_says_hf_right": sum(1 for x in human if x["human"]["choice"] == "hf"),
-         "needs_review": sum(1 for x in xs if not x["human"] and (x["agree"] is False or not x["decided"]))}
+         "confusion": dict(conf),
+         # Over all runs, counting "no decision" as a miss: how often each HF class is recovered end to end.
+         "verified_recovered": f"{sum(1 for x in by['verified'] if x['agree'])}/{len(by['verified'])}",
+         "falsified_recovered": f"{sum(1 for x in by['falsified'] if x['agree'])}/{len(by['falsified'])}",
+         "built": sum(1 for x in xs if x["run"]["result"].get("build") == "built")}
     _save(ICML / "score.json", s)
     return s
 

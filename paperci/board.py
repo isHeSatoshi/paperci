@@ -1,6 +1,7 @@
 """Public live board: what the always-on agent is doing, learning and repairing, right now.
 
-Anonymized by construction: papers appear only as P-xxxxxx ids, and only anonymized review pages are linked."""
+Live-feed papers appear only as P-xxxxxx ids with anonymized review pages. The exception is the ICML 2026
+reference set, whose papers and community verdicts are already public on Hugging Face."""
 from __future__ import annotations
 
 import html
@@ -87,22 +88,27 @@ def _evolution() -> str:
 
 
 def _external() -> str:
-    """Agreement with Hugging Face's ICML 2026 community reproductions: aggregate numbers only, no paper names."""
+    """Agreement with Hugging Face's ICML 2026 community reproductions (public papers, shown by name)."""
     from . import icml_eval
+    e = html.escape
     st = icml_eval.status()
     s = st["score"]
     runs = st["runs"]
     if not s["runs"] and not runs:
         return "<div class=muted>Not started yet.</div>"
     pct = (lambda v: f"{v * 100:.0f}%" if v is not None else "-")
+    rows = "".join(
+        f"<a class=rv href='/icml/r/{e(x['arxiv'])}'><span class='dotx {'ok' if x['agree'] else ('bad' if x['decided'] else 'na')}'></span>"
+        f"<b>{e(x['title'][:70])}</b> HF {e(x['label'])} / PaperCI {e(x['ours'] or 'no decision')}</a>"
+        for x in icml_eval.items()[-8:])
     return (f"<div class=kpis style='grid-template-columns:repeat(4,1fr)'><div class=kpi><b>{s['runs']}</b>papers run blind</div>"
+            f"<div class=kpi><b>{s['built']}</b>built and run offline</div>"
             f"<div class=kpi><b>{pct(s['coverage'])}</b>PaperCI reached a verdict</div>"
-            f"<div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div>"
-            f"<div class=kpi><b>{s['human_reviewed']}</b>disagreements human-reviewed</div></div>"
-            f"<div class=muted>Queue: {html.escape(json.dumps(runs))}. Reference labels: papers where at least two "
+            f"<div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div></div>{rows}"
+            f"<div class=muted style='margin-top:8px'>Queue: {e(json.dumps(runs))}. Answer key: papers where at least two "
             "independent teams in Hugging Face's ICML 2026 Open Reproductions agreed (verified or falsified, judged by "
-            "GLM-5.2 from their logbooks). PaperCI never sees those labels; a human reviews every disagreement and that "
-            "decision becomes the gold label. Benchmark papers used to evolve the agent are excluded from this score.</div>")
+            "GLM-5.2 from their logbooks). PaperCI never sees those labels. Papers used to evolve the agent are excluded "
+            "from this score. <a href='/icml'>All results by paper</a></div>")
 
 
 def _bars(days: list[dict]) -> str:
@@ -171,7 +177,7 @@ def render() -> str:
 <h1 style="font-size:36px;margin:10px 0 4px">PaperCI live board</h1>
 <div class=muted>An autonomous agent that watches arXiv, rebuilds each new paper's code in a locked-down sandbox, verifies every
 headline claim offline with a different model family, learns from its own failures every night, and repairs itself.
-Papers are anonymized here.</div></div>
+Papers from the live arXiv feed are anonymized; the ICML 2026 reference papers are public and named.</div></div>
 <div class=muted style="text-align:right">last activity {(_ago(last) if last else 'never')}<br>{wd_txt}
 {f"&middot; disk {wd.get('disk_free_gb')} GB free" if wd.get('disk_free_gb') else ''}<br>LLM today ${today:.2f}{f' of ${cap:.2f} cap' if cap else ''}</div></div>
 <div class=kpis>

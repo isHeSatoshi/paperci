@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import os
 import re
 import subprocess
 import time
@@ -263,10 +264,21 @@ def paper_links(arxiv_id: str) -> str | None:
     return find_github(r.text)
 
 
+class RateLimited(RuntimeError):
+    """GitHub API quota exhausted. Raised instead of returning the 403, so a stage fails (and is retried later)
+    rather than caching "repo unavailable" as if the repository did not exist."""
+
+    def __init__(self, reset: float):
+        super().__init__(f"GitHub API rate limit, resets in {max(0, int(reset - time.time()))}s")
+        self.reset = reset
+
+
 @lru_cache(maxsize=1)
 def _gh_token() -> str | None:
-    # Read-only use of the operator's existing GitHub CLI login to avoid the
+    # GH_TOKEN (read-only, public repos) or the operator's existing GitHub CLI login, to avoid the
     # 60 req/h anonymous limit. Kept in memory only; never sent to sandboxes.
+    if os.getenv("GH_TOKEN"):
+        return os.environ["GH_TOKEN"]
     try:
         p = subprocess.run(["gh", "auth", "token"], capture_output=True, timeout=15, text=True)
         tok = p.stdout.strip()
@@ -280,7 +292,10 @@ def gh_api(path: str) -> requests.Response:
     tok = _gh_token()
     if tok:
         h["Authorization"] = f"Bearer {tok}"
-    return requests.get(f"https://api.github.com/{path.lstrip('/')}", headers=h, timeout=30)
+    r = requests.get(f"https://api.github.com/{path.lstrip('/')}", headers=h, timeout=30)
+    if r.status_code in (403, 429) and r.headers.get("X-RateLimit-Remaining") == "0":
+        raise RateLimited(float(r.headers.get("X-RateLimit-Reset") or time.time() + 3600))
+    return r
 
 
 def repo_snapshot(repo_url: str) -> dict:

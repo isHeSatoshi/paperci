@@ -29,11 +29,9 @@ less data/evolve/candidates/<id>/builder_policy.py             # read what it do
 ```
 The canary rolls an approved policy back automatically if live build rates drop afterwards.
 
-## B3. Review ICML eval disagreements (makes gold labels) — as runs finish, ~3 min per paper
-Open https://paperci.vercel.app/icml/review?code=<your invite code>. Each card shows the Hugging Face consensus
-with logbook evidence and links, PaperCI's verdict and measurements, and four buttons. Pick one and add a
-short reason. Judges or friends can do the same with their own invite codes (reviews are stored per code hash).
-Details: `docs/icml-eval.md`.
+## B3. ICML eval results — optional, look when you like
+https://paperci.vercel.app/icml lists every ICML 2026 paper PaperCI ran, by name, next to the Hugging Face
+community verdict. Nothing to review: the community consensus is the answer key. Details: `docs/icml-eval.md`.
 
 ## B4. Factory API key — after the hackathon
 The key was pasted in chat; it is only stored in `.env` here and on the server (both outside git, Entire

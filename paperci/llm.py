@@ -164,7 +164,9 @@ def _factory_chat(model: str, messages: list[dict], tools: list | None, stage: s
         pf = os.path.join(cwd, "prompt.txt")
         with open(pf, "w", encoding="utf-8") as f:
             f.write(prompt)
-        cmd = [_droid(), "exec", "-m", model[len(FACTORY_PREFIX):], "-r", os.getenv("PAPERCI_FACTORY_EFFORT", "low"),
+        mid = model[len(FACTORY_PREFIX):]
+        effort = os.getenv("PAPERCI_FACTORY_EFFORT") or ("high" if mid.startswith("deepseek") else "low")
+        cmd = [_droid(), "exec", "-m", mid, "-r", effort,
                "--output-format", "json", "-f", pf, "--cwd", cwd, "--disable-builtin-skills", "--restrict-tools", "TodoWrite"]
         t0 = time.time()
         with tracing.span(f"llm:{stage}", kind="LLM", model=model, prompt_chars=len(prompt)) as s:

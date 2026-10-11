@@ -270,8 +270,8 @@ def test_icml_consensus_and_score():
     from pathlib import Path
     from paperci import icml_eval as ie
     tmp = Path(tempfile.mkdtemp())
-    saved = (ie.ICML, ie.CANDS, ie.STATE, ie.LABELS, ie.BENCH_FILE, ie._get, ie.ours)
-    ie.ICML, ie.CANDS, ie.STATE, ie.LABELS, ie.BENCH_FILE = tmp, tmp / "c.json", tmp / "s.json", tmp / "l.jsonl", tmp / "b.json"
+    saved = (ie.ICML, ie.CANDS, ie.STATE, ie.BENCH_FILE, ie._get, ie.ours)
+    ie.ICML, ie.CANDS, ie.STATE, ie.BENCH_FILE = tmp, tmp / "c.json", tmp / "s.json", tmp / "b.json"
     lb = lambda o, v, q="high", s="u/x": {"orid": o, "quality": q, "space_id": s,  # noqa: E731
                                          "claims": [{"claim": "C1", "verdict": v, "evidence": "e"}]}
     data = {"papers.json": {"papers": [{"orid": o, "arxiv": a, "title": o, "area": "T"} for o, a in
@@ -289,15 +289,17 @@ def test_icml_consensus_and_score():
         for c in cands:
             c["screen"], c["role"] = {"status": "runnable"}, "eval"
         ie._save(ie.CANDS, cands)
-        ie._save(ie.STATE, {"runs": [{"arxiv": "2601.00001", "status": "done", "result": {"verdict": "verified"}},
+        ie._save(ie.STATE, {"runs": [{"arxiv": "2601.00001", "status": "done", "result": {"verdict": "verified", "build": "built"}},
                                      {"arxiv": "2601.00002", "status": "done", "result": {"verdict": "blocked-infra"}}]})
         s = ie.score()
-        assert s["runs"] == 2 and s["decided"] == 1 and s["agree"] == 1 and s["needs_review"] == 1, s
-        ie.add_label("2601.00002", "hf", "no code ran", "rev1")
-        s = ie.score()
-        assert s["human_reviewed"] == 1 and s["human_says_hf_right"] == 1 and s["needs_review"] == 0, s
+        assert s["runs"] == 2 and s["decided"] == 1 and s["agree"] == 1 and s["built"] == 1, s
+        assert s["verified_recovered"] == "1/1" and s["falsified_recovered"] == "0/1", s
+        from paperci import web
+        page = web.icml_page()
+        body = page.body.decode()
+        assert "2601.00001" in body and "Automated result" in body, body[:500]
     finally:
-        ie.ICML, ie.CANDS, ie.STATE, ie.LABELS, ie.BENCH_FILE, ie._get, ie.ours = saved
+        ie.ICML, ie.CANDS, ie.STATE, ie.BENCH_FILE, ie._get, ie.ours = saved
 
 
 def test_go_replies_start_the_run():

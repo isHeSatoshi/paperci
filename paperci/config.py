@@ -38,13 +38,15 @@ MODELS = {
     "solver": os.getenv("PAPERCI_MODEL_SOLVER", "claude-haiku"),
     "concierge": os.getenv("PAPERCI_MODEL_CONCIERGE", "claude-haiku"),
 }
-# One model for every role (e.g. factory:glm-5.3-flash). This gives up the builder/verifier family split.
+# PAPERCI_MODEL_ALL sets a default for every role; an explicit PAPERCI_MODEL_<ROLE> still wins, so the
+# cheap model can serve the always-on roles while the builder (and solver) use a stronger one.
 if os.getenv("PAPERCI_MODEL_ALL"):
-    MODELS = {k: os.environ["PAPERCI_MODEL_ALL"] for k in MODELS}
+    MODELS = {k: os.getenv(f"PAPERCI_MODEL_{k.upper()}") or os.environ["PAPERCI_MODEL_ALL"] for k in MODELS}
 MODEL_FAMILY = {
     "nova-micro": "amazon-nova", "nova-lite": "amazon-nova", "nova-pro": "amazon-nova",
     "nova-2-lite": "amazon-nova", "claude-haiku": "anthropic", "claude-sonnet-4.6": "anthropic",
     "claude-opus-4.6": "anthropic", "factory:glm-5.3-flash": "zhipu-glm",
+    "factory:deepseek-v4.1-flash": "deepseek",
 }
 FORBIDDEN_MODELS = {"claude-opus-4.6"}
 
@@ -61,6 +63,7 @@ PRICES = {
     # Billed in Factory credits, not on the LiteLLM key; this USD estimate only keeps the per-paper and
     # per-stage caps meaningful (conservative list-price guess for a flash-class open model).
     "factory:glm-5.3-flash": {"in": 1.0e-07, "out": 4.0e-07},
+    "factory:deepseek-v4.1-flash": {"in": 1.5e-07, "out": 6.0e-07},
 }
 
 # Budget. The key has a $20 / 30 day allowance shared by the team.
