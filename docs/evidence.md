@@ -1,4 +1,4 @@
-# Evidence (generated 2026-10-11 10:03 IST by scripts/build_evidence.py)
+# Evidence (generated 2026-10-11 10:08 IST by scripts/build_evidence.py)
 
 All numbers below are measured from `data/paperci.sqlite`, run artifacts and neatlogs readback.
 Paper identities are anonymized (P-xxxxxx); per-paper verdicts are not published.
@@ -71,6 +71,7 @@ Fault-injection (chaos) runs (`PAPERCI_CHAOS=proxy_down` stops the egress proxy 
 
 ## 6. neatlogs readback (CLI, OAuth profile; SDK key excluded from the CLI env)
 
+- chaos `14ed5fe7f083b2b1ff4c98fbbf705223` finalization `dlq` (recovery is also recorded in the state DB `failures` table and `runs/logs/dev-chaos.log`)
 - `a9540916517fe38646791aacb7bade88` finalized 723s, 0 LLM calls, 0 tool calls, 0 tokens, tags ['paperci', 'run:heldout-v1', 'variant:v1']
 - `892df14168f4210e9594646da9034048` finalized 800s, 3 LLM calls, 2 tool calls, 38603 tokens, tags ['paperci', 'run:heldout-v2', 'variant:v2']
 - `e261ea87d9c32fb1968cd051a2ac9752` None 0s, None LLM calls, None tool calls, None tokens, tags None
@@ -87,7 +88,10 @@ neatlogs; cost is carried as `paperci.cost_usd` attributes and LOG spans from ou
 
 ```
 branch       main
-  checkpoints  2
+  checkpoints  3
+
+● 01M4MKYQ3938RM8FJ5K9ETQ55A  "# Mission\r\nYou are the lead engineer on \"PaperCI\" (workin..."
+  10-11 10:06 (e3b748d) Self-audit and judge hardening: replay/no-repo-code-path integrity flags, re-...
 
 ● bf4a7d1a-7a3  [temporary]  "# Mission\r\nYou are the lead engineer on \"PaperCI\" (workin..."
   10-11 03:57 (abf4946) # Mission

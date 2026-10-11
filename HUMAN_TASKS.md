@@ -30,7 +30,9 @@ Needed so the agent can read traces back from the terminal (SDK ingestion alread
    - AFTER (same paper, v2): `4e85d604ac7a5d343950ee923f573502`
    - Failure + recovery (chaos): `14ed5fe7f083b2b1ff4c98fbbf705223`
 3. Copy each share link (or take a screenshot) and paste it into `hackathon.md` (Results) next to the ID.
-   Note: some traces show `dlq` finalization in neatlogs (documented in evidence.md section 6); use the ones above.
+   Note: some traces show `dlq` finalization in neatlogs (documented in evidence.md section 6). The chaos
+   trace is one of them. If it does not render, show the recovery from `docs/evidence.md` section 4 and
+   `runs/logs/dev-chaos.log` instead, and consider reporting the DLQ to neatlogs in Discord.
 
 ## 3. Entire: connect the GitHub repo — TODO if not done yet, ~5 min
 The repo is pushed to https://github.com/isHeSatoshi/paperci (public after the final secret scan) with the

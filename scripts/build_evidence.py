@@ -111,6 +111,12 @@ L += ["## 5. Funnel and cost", "",
 L += ["## 6. neatlogs readback (CLI, OAuth profile; SDK key excluded from the CLI env)", ""]
 if readback and pairs:
     import nl_trace
+    chaos_tids = [r["trace_id"] for r in db.q("SELECT DISTINCT trace_id FROM failures WHERE run_label LIKE '%chaos%' "
+                                              "AND trace_id IS NOT NULL")]
+    for tid in chaos_tids:
+        d = nl_trace.cli("traces", "get", tid).get("data", {})
+        L.append(f"- chaos `{tid}` finalization `{d.get('finalizationStatus')}` (recovery is also recorded in the "
+                 "state DB `failures` table and `runs/logs/dev-chaos.log`)")
     for aid, t1, t2, _, _ in pairs[:3]:
         for tid in (t1, t2):
             d = nl_trace.cli("traces", "get", tid).get("data", {})
