@@ -385,6 +385,10 @@ class Builder:
                 (self.dir / "actions.json").write_text(json.dumps(self.actions, indent=1), encoding="utf-8", newline="\n")
                 res["egress"] = egress_since(sb.started_at - 5, sb.ip())
                 if res["status"] == "built":
+                    lock = sb.exec("pip freeze --exclude-editable 2>/dev/null | grep -v '^-e ' | head -c 60000",
+                                   timeout=120, quiet=True).output
+                    if "==" in lock:
+                        (self.dir / "requirements.lock.txt").write_text(lock, encoding="utf-8", newline="\n")
                     tag = f"paperci/built:{re.sub(r'[^a-z0-9]+', '-', self.arxiv_id + '-' + self.run_label.lower())}"
                     sb.commit(tag)
                     res["image"] = tag

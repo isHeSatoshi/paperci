@@ -44,13 +44,18 @@ def _parse_cmd_log(p) -> tuple[str, int, str] | None:
     return (m.group(1), int(m.group(2)), t[m.end():]) if m else None
 
 
-def _evidence(labels: list[str]) -> dict[str, list[dict]]:
+def _evidence(labels: list[str], only_split: str | None = None) -> dict[str, list[dict]]:
     """Rebuild the failure taxonomy from raw sandbox logs and build results, using the
     current classifier (so classifier fixes apply retroactively to old traces)."""
+    from . import db
     clusters: dict[str, list[dict]] = defaultdict(list)
     for label in labels:
         for bdir in RUNS_DIR.glob(f"*/{label}/build"):
             paper = bdir.parent.parent.name
+            if only_split:
+                row = db.q1("SELECT split FROM papers WHERE arxiv_id=?", (paper,))
+                if not row or row["split"] != only_split:
+                    continue
             res_f = bdir / "result.json"
             if not res_f.exists():
                 continue
@@ -114,8 +119,8 @@ def _gate(rule: PlaybookRule, clusters: dict[str, list[dict]]) -> tuple[bool, st
     return True, f"recall {hit_own}/{len(own)}, false hits {hit_other}/{len(others)}"
 
 
-def improve(labels: list[str], apply: bool = False) -> dict:
-    clusters = _evidence(labels)
+def improve(labels: list[str], apply: bool = False, only_split: str | None = None) -> dict:
+    clusters = _evidence(labels, only_split)
     with tracing.span("stage:improver", kind="AGENT", labels=labels, model=MODELS["builder"]) as s:
         if not clusters:
             return {"status": "no failures to learn from"}

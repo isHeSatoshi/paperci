@@ -86,6 +86,50 @@ def _claim_status(pc: dict | None, built: bool, reduced: bool, flagged: bool) ->
     return "differs_reduced" if reduced else "differs"
 
 
+PATCH_EXT = re.compile(r"\.(py|txt|cfg|toml|ini|ya?ml|sh|json|ipynb|md|r|jl|m|c|cc|cpp|h)$|(^|/)(requirements[^/]*|setup\.py|Makefile|Dockerfile)$", re.I)
+GENERATED_DIR = re.compile(r"(^|/)(out|outputs?|results?|logs?|runs?|checkpoints?|ckpts?|wandb|mlruns|data|datasets|cache|"
+                           r"__pycache__|\.ipynb_checkpoints|lightning_logs|figures?|plots?|build|dist|[^/]+\.egg-info)/", re.I)
+
+
+def reproduce_file(script: str) -> dict | None:
+    """The builder's verified run script as a new repo file, with sandbox paths made repo-relative."""
+    s = (script or "").strip()
+    if not s or len(s) > 8000:
+        return None
+    s = s.replace("/work/repo/", "./").replace("/work/repo", ".").replace("/work/out", "./paperci_out")
+    if not s.startswith("#!"):
+        s = "#!/usr/bin/env bash\n" + s
+    s = s.replace("#!/usr/bin/env bash", "#!/usr/bin/env bash\n# Generated and verified by PaperCI: regenerates the paper's headline numbers.", 1)
+    lines = s.splitlines()
+    body = f"--- /dev/null\n+++ b/reproduce.sh\n@@ -0,0 +1,{len(lines)} @@\n" + "\n".join("+" + l for l in lines) + "\n"
+    return {"path": "reproduce.sh", "new": True, "added": len(lines), "removed": 0,
+            "diff": "diff --git a/reproduce.sh b/reproduce.sh\nnew file mode 100755\n" + body}
+
+
+def verified_patch(diff: str) -> list[dict]:
+    """Split the builder's `diff -ruN orig work` into per-file source changes, dropping binaries, generated
+    outputs and huge new files: what is left is the change the author would commit."""
+    files = []
+    for sec in re.split(r"(?m)^diff -ruN ", diff or "")[1:]:
+        head, _, body = sec.partition("\n")
+        m = re.search(r"/work/repo/(\S+)$", head)
+        if not m or sec.startswith("Binary") or "\nBinary files" in sec[:400]:
+            continue
+        path = m.group(1)
+        if not PATCH_EXT.search(path) or GENERATED_DIR.search(path):
+            continue
+        new = "\n--- /dev/null" in "\n" + body[:300] or re.search(r"(?m)^--- /opt/orig/repo/\S+\s+1970-", body[:300])
+        added = sum(1 for l in body.splitlines() if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in body.splitlines() if l.startswith("-") and not l.startswith("---"))
+        if (new and added > 300) or added + removed > 600 or added + removed == 0:
+            continue
+        body = re.sub(r"(?m)^--- /opt/orig/repo/(\S+).*$", r"--- a/\1", body)
+        body = re.sub(r"(?m)^\+\+\+ /work/repo/(\S+).*$", r"+++ b/\1", body)
+        files.append({"path": path, "new": bool(new), "added": added, "removed": removed,
+                      "diff": f"diff --git a/{path} b/{path}\n" + body.rstrip("\n") + "\n"})
+    return files
+
+
 def _fmt(v) -> str:
     if v is None:
         return "-"
@@ -135,6 +179,15 @@ def build_review(aid: str, label: str, anonymize: bool = False) -> dict:
     commands = json.loads((rdir / "commands.json").read_text()) if (rdir / "commands.json").exists() else []
     script = (rdir / "paperci_run.sh").read_text(encoding="utf-8", errors="replace") if (rdir / "paperci_run.sh").exists() else ""
     pip = sorted(set((build or {}).get("pip_packages", [])))
+    trusted = built and not flags
+    patch = verified_patch((rdir / "repo.diff").read_text(encoding="utf-8", errors="replace")) \
+        if trusted and (rdir / "repo.diff").exists() else []
+    lock = (rdir / "requirements.lock.txt").read_text(encoding="utf-8", errors="replace") \
+        if trusted and (rdir / "requirements.lock.txt").exists() else ""
+    if trusted and "reproduce.sh" not in str(snap.get("tree") or ""):
+        rf = reproduce_file(script)
+        if rf:
+            patch.append(rf)
     manifests = snap.get("manifests") or {}
     if isinstance(manifests, str):
         try:
@@ -182,6 +235,21 @@ def build_review(aid: str, label: str, anonymize: bool = False) -> dict:
 
     # ---- actionable suggestions for authors
     sugg = []
+    ok_reruns = sum(1 for x in runs if x["exit_code"] == 0)
+    proof = (f"PaperCI applied it in the sandbox; with it, {ok_reruns}/{len(runs)} offline reruns in fresh containers "
+             f"exited 0" + (f" and {sum(1 for c in claims if c['status'] in ('reproduced', 'reproduced_reduced'))} "
+                            f"claim(s) reproduced" if claims else ""))
+    code_chg = [f for f in patch if f["path"] != "reproduce.sh"]
+    if code_chg:
+        sugg.append(("Commit the verified patch", f"Your code needed {len(code_chg)} file change(s) to run from a clean "
+                     f"checkout ({', '.join('`' + f['path'] + '`' for f in code_chg[:5])}). {proof}. "
+                     "Apply it with `git apply paperci.patch` (shown below as suggested changes)."))
+    if any(f["path"] == "reproduce.sh" for f in patch):
+        sugg.append(("Add the verified one-command entry point", "`reproduce.sh` (below) is the script PaperCI wrote and "
+                     f"verified to regenerate your numbers. {proof}. Commit it so readers can rerun the paper in one command."))
+    if lock and (not manifest_text or "==" not in manifest_text):
+        sugg.append(("Pin the environment that worked", f"PaperCI recorded the exact package versions of the environment "
+                     f"that reproduced your run ({lock.count('==')} pins). {proof}. Download it as `requirements.lock.txt`."))
     if pip and not manifest_text:
         sugg.append(("Add a dependency manifest", "The repository has no requirements.txt / pyproject. PaperCI had to "
                      f"discover these by trial and error: `{' '.join(pip)}`. Ship a pinned requirements.txt."))
@@ -280,6 +348,8 @@ def build_review(aid: str, label: str, anonymize: bool = False) -> dict:
         "reason": "" if anonymize else dec.get("reason", ""), "claims": claims, "counts": counts, "checks": checks, "suggestions": sugg,
         "build": build or {}, "runs": runs, "pipeline": pipeline, "commands": [] if anonymize else commands, "script": "" if anonymize else script,
         "pip": pip, "task_id": pkg.get("task_id"), "oracle": orc, "trainability": trn,
+        "patch": [] if anonymize else patch, "patch_summary": [(f["path"] if not anonymize else "file", f["added"], f["removed"]) for f in patch],
+        "lock": "" if anonymize else lock, "proof": proof,
         "cost_usd": round(cost, 4), "trace_id": stage_rows[0]["trace_id"] if stage_rows else None,
         "sealed_sha": cl.get("sealed_sha256"), "models": dict(MODELS), "generated": time.strftime("%Y-%m-%d %H:%M"),
         "walkthrough": _walkthrough(build, runs, pip, snap, anonymize, reduced),
@@ -321,6 +391,14 @@ def render_md(r: dict) -> str:
     L += ["", "### Checks"] + [f"- `{icon[s]}` **{n}**: {t}" for s, n, t in r["checks"]]
     if r["suggestions"]:
         L += ["", "### Suggestions for the authors"] + [f"{i}. **{t}.** {b}" for i, (t, b) in enumerate(r["suggestions"], 1)]
+    if r.get("patch"):
+        L += ["", "### Verified suggested changes", "", f"_{r['proof']}._ Apply all with `git apply paperci.patch`.", ""]
+        for f in r["patch"][:8]:
+            L += [f"<details><summary><code>{f['path']}</code> (+{f['added']} −{f['removed']}){' new file' if f['new'] else ''}</summary>",
+                  "", "```diff", f["diff"][:6000].rstrip(), "```", "", "</details>"]
+    if r.get("lock"):
+        L += ["", "<details><summary>requirements.lock.txt (the environment that reproduced the run)</summary>", "",
+              "```", r["lock"].strip()[:6000], "```", "", "</details>"]
     if r["script"]:
         L += ["", "<details><summary>Reproduce it yourself</summary>", "", "```bash", r["script"].strip()[:4000], "```",
               "", "</details>"]
@@ -360,6 +438,12 @@ border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;background:#ff
 .stp.warn{border-color:#d4a72c}.stp.warn .i{color:var(--warn)}.stp.na{color:var(--muted)}
 .foot{color:var(--muted);font-size:12px;margin-top:18px}.sum{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px}
 .sum b{color:var(--fg);font-size:18px;display:block}
+.chg{border:1px solid var(--line);border-radius:6px;margin:10px 0;overflow:hidden}.chgh{display:flex;justify-content:space-between;
+padding:6px 12px;background:var(--bg);border-bottom:1px solid var(--line);font-size:12px}.pa{color:var(--ok);font-weight:600}.pd{color:var(--bad);font-weight:600}
+pre.diff{background:#fff;color:var(--fg);padding:0;max-height:420px}.dl{display:block;padding:0 12px;white-space:pre}.dl.a{background:#dafbe1}
+.dl.d{background:#ffebe9}.dl.h{color:var(--muted);background:#f6f8fa}.vfy{color:var(--ok);font-weight:600;margin:4px 0 8px}
+.dlrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0}.dlb{border:1px solid var(--line);border-radius:6px;padding:5px 12px;
+background:var(--bg);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.dlb:hover{background:#eaeef2}
 """
 
 ICON = {"ok": "&#10003;", "bad": "&#10007;", "warn": "!", "na": "&ndash;"}
@@ -399,6 +483,30 @@ def render_html(r: dict) -> str:
     steps = "".join(f"<div class='stp {s}'><span class=i>{ICON[s]}</span>{e(lab)}"
                     f"<span class=q>{(f'{t / 60:.1f}m' if t >= 60 else f'{t:.0f}s') if t else ''}</span></div>"
                     for lab, s, t in r.get("pipeline", []))
+    sugchg = ""
+    if r.get("patch"):
+        from urllib.parse import quote as _q
+        full = "".join(f["diff"] for f in r["patch"])
+        cards = []
+        for f in r["patch"][:8]:
+            lines = []
+            for ln in f["diff"].splitlines()[1:400]:
+                cls = "a" if ln.startswith("+") and not ln.startswith("+++") else ("d" if ln.startswith("-") and not ln.startswith("---")
+                                                                                   else ("h" if ln.startswith(("@@", "---", "+++")) else ""))
+                lines.append(f"<span class='dl {cls}'>{e(ln)}</span>")
+            cards.append(f"<div class=chg><div class=chgh><span class=mono>{e(f['path'])}</span>"
+                         f"<span><span class=pa>+{f['added']}</span> <span class=pd>&minus;{f['removed']}</span>"
+                         f"{' &middot; new file' if f['new'] else ''}</span></div><pre class=diff>{''.join(lines)}</pre></div>")
+        sugchg = (f"<h3>Verified suggested changes</h3><div class=vfy>&#10003; {e(r['proof'])}.</div>{''.join(cards)}"
+                  f"<div class=dlrow><a class=dlb download='paperci.patch' href='data:text/x-diff;charset=utf-8,{_q(full)}'>"
+                  f"Download paperci.patch</a><span class=mono>git apply paperci.patch</span>"
+                  + (f"<a class=dlb download='requirements.lock.txt' href='data:text/plain;charset=utf-8,{_q(r['lock'])}'>"
+                     f"Download requirements.lock.txt</a>" if r.get("lock") else "") + "</div>")
+    elif r.get("lock"):
+        from urllib.parse import quote as _q
+        sugchg = (f"<h3>Verified environment</h3><div class=vfy>&#10003; {e(r['proof'])}.</div><div class=dlrow>"
+                  f"<a class=dlb download='requirements.lock.txt' href='data:text/plain;charset=utf-8,{_q(r['lock'])}'>"
+                  f"Download requirements.lock.txt</a><span class=q>{r['lock'].count('==')} pinned packages</span></div>")
     repro = ""
     if r["script"]:
         repro = (f"<details><summary>Reproduce it yourself</summary><pre>{e(r['script'].strip()[:6000])}</pre></details>"
@@ -422,6 +530,7 @@ def render_html(r: dict) -> str:
 <h3>Claims vs measured</h3><table><tr><th>Claim (from the paper)</th><th>Paper</th><th>PaperCI measured</th><th>Tolerance</th><th>Status</th></tr>{''.join(rows)}</table>
 <h3>Checks</h3><div class=checks>{checks}</div>
 {('<h3>Suggestions for the authors</h3>' + sugg) if sugg else ''}
+{sugchg}
 {repro}
 <div class=foot>Builder {e(r['models']['builder'])} &middot; verifier {e(r['models']['verifier'])} (different model family) &middot;
 neatlogs trace <span class=mono>{e(str(r['trace_id']))}</span> &middot; sealed claims sha256 <span class=mono>{e((r['sealed_sha'] or '')[:16])}</span><br>

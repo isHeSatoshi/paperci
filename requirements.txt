@@ -1,0 +1,12 @@
+fastapi==0.143.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+pydantic==2.14.0
+requests==2.34.2
+python-dotenv==1.2.4
+neatlogs==1.4.26
+openai==3.28.0
+pypdf==6.20.0
+opentelemetry-api==1.45.1
+opentelemetry-sdk==1.45.1
+httpx

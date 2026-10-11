@@ -1,0 +1,18 @@
+[Unit]
+Description=PaperCI agent (web app, author conversations, autopilot)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+User=ubuntu
+Group=docker
+WorkingDirectory=/home/ubuntu/paperci
+EnvironmentFile=/home/ubuntu/paperci/deploy/server.env
+ExecStart=/home/ubuntu/paperci/.venv/bin/python -u -m paperci.web
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

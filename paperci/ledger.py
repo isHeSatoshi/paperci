@@ -72,12 +72,31 @@ def global_spend() -> float:
     return max(local_total(), remote_spend())
 
 
+def today_total() -> float:
+    """Local spend since midnight in the operator's timezone (PAPERCI_TZ_OFFSET_H, default IST)."""
+    off = float(os.getenv("PAPERCI_TZ_OFFSET_H", "5.5")) * 3600
+    start = ((time.time() + off) // 86400) * 86400 - off
+    start = max(start, float(os.getenv("PAPERCI_CAP_SINCE", "0")))  # deploy time: history copied in doesn't count
+    r = db.q1("SELECT COALESCE(SUM(cost_usd),0) AS s FROM spend WHERE ts>=?", (start,))
+    return float(r["s"]) if r else 0.0
+
+
+def daily_cap() -> float | None:
+    v = os.getenv("PAPERCI_DAILY_CAP")
+    return float(v) if v else None
+
+
 def precheck(arxiv_id: str, run_label: str, est_cost: float, stage_cap: float | None = None,
              stage: str | None = None, allow_reserve: bool = False) -> None:
     spent = global_spend()
     limit = min(HARD_STOP_USD, GLOBAL_BUDGET_USD - (0 if allow_reserve else DEMO_RESERVE_USD))
     if spent + est_cost > limit:
         raise BudgetExceeded(f"global spend {spent:.3f}+{est_cost:.3f} > limit {limit:.2f}")
+    cap = daily_cap()
+    if cap is not None and not allow_reserve:
+        t = today_total()
+        if t + est_cost > cap:
+            raise BudgetExceeded(f"daily spend {t:.3f}+{est_cost:.3f} > daily cap {cap:.2f}")
     if arxiv_id and arxiv_id != "-":
         p = paper_total(arxiv_id, run_label)
         if p + est_cost > PER_PAPER_CAP_USD:

@@ -1,0 +1,10 @@
+[Unit]
+Description=PaperCI watchdog: health checks with automatic repair
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/paperci
+EnvironmentFile=/home/ubuntu/paperci/deploy/server.env
+ExecStart=/home/ubuntu/paperci/.venv/bin/python -m paperci.ops watchdog
+TimeoutStartSec=900

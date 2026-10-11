@@ -1,0 +1,6 @@
+[Unit]
+Description=Stop the PaperCI server at the end of the credit window
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl poweroff

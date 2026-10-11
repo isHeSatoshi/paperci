@@ -20,7 +20,7 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -36,6 +36,9 @@ MAX_UPLOAD = 25 * 1024 * 1024
 INTAKE_WAIT = int(os.environ.get("PAPERCI_WEB_INTAKE_WAIT", "600"))   # start anyway if the author doesn't answer
 WATCH_EVERY = int(os.environ.get("PAPERCI_WEB_WATCH_EVERY", "900"))
 MAX_ATTEMPTS = 3
+# Public deployments gate submissions (each one spends real LLM budget and runs third-party code) behind invite codes.
+INVITES = {c.strip() for c in os.environ.get("PAPERCI_INVITE_CODES", "").split(",") if c.strip()}
+SUBMITS: dict[str, list[float]] = {}
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,24}$")
 LOCK = threading.Lock()
@@ -305,6 +308,7 @@ def _check_watches() -> None:
 
 
 def _worker() -> None:
+    from . import ops
     while True:
         row = None
         try:
@@ -313,6 +317,10 @@ def _worker() -> None:
             if row:
                 job = dict(row)
                 (_prepare if job["status"] == "queued_prepare" else _run)(job)
+                continue
+            kind = ops.due()
+            if kind:  # autopilot only uses the sandbox when no author is waiting
+                ops.run_due(kind)
                 continue
             for j in db.q("SELECT token FROM web_jobs WHERE status='awaiting_author' AND phase='intake' AND asked_at<?",
                           (time.time() - INTAKE_WAIT,)):
@@ -324,6 +332,8 @@ def _worker() -> None:
             if row:
                 _set(row["token"], status="failed", error=str(e)[:300], finished=time.time())
                 _say(row["token"], f"I hit an internal error and stopped: `{str(e)[:200]}`")
+            else:
+                ops.event("error", f"Worker error (recovered, continuing): {type(e).__name__}: {str(e)[:160]}")
         time.sleep(2)
 
 
@@ -420,7 +430,7 @@ CSS = (Path(__file__).with_name("web.css")).read_text(encoding="utf-8")
 def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
-<div class=nav><a class=logo href="/">Paper<span>CI</span></a><div><a class=l href="/#how">How it works</a>
+<div class=nav><a class=logo href="/">Paper<span>CI</span></a><div><a class=l href="/board">Live board</a><a class=l href="/#how">How it works</a>
 <a class=l href="/examples/index.html">Example reviews</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
 {body}</body></html>""")
 
@@ -450,6 +460,7 @@ headline claim against what your code actually produces, before reviewers or rea
 <div id=pp style="display:none;margin-top:10px"><label class=drop id=dz><input type=file name=paper accept=".pdf,.tex,.zip,.tar,.gz,.tgz,.docx,.md,.txt,.html,.htm" style="display:none" onchange="picked(this)">
 <span id=dzt>Drop your paper here or click to choose<br><span class=muted>PDF, LaTeX (.tex or source .zip/.tar.gz), Word .docx, HTML, Markdown, text · max 25 MB</span></span></label></div>
 <label>Code repository</label><input type=url name=repo placeholder="https://github.com/you/your-paper-code (found automatically if linked)" value="{e(repo)}">
+{'<label>Invite code</label><input type=text name=invite required placeholder="early-access code" autocomplete=off>' if INVITES else ''}
 <label class=chk><input type=checkbox name=consent required> I am an author (or have permission) and agree that PaperCI runs this public code in an isolated sandbox.</label>
 <button class=btn id=sb>Start verification</button>{err}
 <div class=muted style="margin-top:10px">Today: CPU-scale code, no GPU, no paid API keys. GPU and simulator workloads are on the roadmap.</div>
@@ -538,10 +549,37 @@ def index():
     return landing()
 
 
+@app.get("/healthz")
+def healthz():
+    return {"ok": True, "ts": time.time()}
+
+
+@app.get("/board", response_class=HTMLResponse)
+def board_page():
+    from . import board
+    return _page("PaperCI live board", f"<style>{board.CSS}</style>" + board.render())
+
+
+@app.get("/board/r/{name}")
+def board_review(name: str):
+    from .review import REVIEWS
+    # only anonymized review pages (P-xxxxxx-...) are public
+    if not re.fullmatch(r"P-[0-9a-f]{6}-[A-Za-z0-9._-]+\.html", name) or not (REVIEWS / name).exists():
+        raise HTTPException(404)
+    return FileResponse(REVIEWS / name, media_type="text/html")
+
+
 @app.post("/submit")
-async def submit(email: str = Form(...), arxiv: str = Form(""), repo: str = Form(""), consent: str = Form(""),
-                 paper: UploadFile | None = File(None)):
+async def submit(request: Request, email: str = Form(...), arxiv: str = Form(""), repo: str = Form(""),
+                 consent: str = Form(""), invite: str = Form(""), paper: UploadFile | None = File(None)):
     email, arxiv, repo = email.strip(), arxiv.strip(), repo.strip()
+    if INVITES and invite.strip() not in INVITES:
+        return landing("That invite code is not valid. PaperCI is in early access; ask the team for a code.", email, arxiv, repo)
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0].strip()
+    recent = [t for t in SUBMITS.get(ip, []) if time.time() - t < 3600]
+    if len(recent) >= 3:
+        return landing("Too many submissions from your network in the last hour. Please try again later.", email, arxiv, repo)
+    SUBMITS[ip] = recent + [time.time()]
     if not EMAIL.match(email):
         return landing("Please enter a valid email address.", email, arxiv, repo)
     if not consent:
@@ -634,9 +672,12 @@ def review_svg(token: str):
 def main() -> None:
     import uvicorn
     tracing.init("web", "-")
+    from . import ops
     db.ex("UPDATE web_jobs SET status='queued_'||phase WHERE status='running' AND phase IN ('prepare','run')")
+    ops.event("boot", "PaperCI agent started" + (" with autopilot on" if ops.enabled() else ""))
     threading.Thread(target=_worker, daemon=True).start()
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PAPERCI_WEB_PORT", "8000")), log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PAPERCI_WEB_PORT", "8000")), log_level="warning",
+                proxy_headers=True, forwarded_allow_ips="127.0.0.1")
 
 
 if __name__ == "__main__":

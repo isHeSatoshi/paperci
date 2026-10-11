@@ -16,7 +16,7 @@ from . import db, ledger, tracing
 from .config import BUILDER_VARIANT
 
 
-def _queue(split: str | None, limit: int, ids: list[str] | None, label: str) -> list[str]:
+def _queue(split: str | None, limit: int, ids: list[str] | None, label: str, fresh: bool = False) -> list[str]:
     if ids:
         return ids
     sql = ("SELECT p.arxiv_id FROM papers p JOIN stages s ON s.arxiv_id=p.arxiv_id AND s.stage='claims' "
@@ -27,8 +27,10 @@ def _queue(split: str | None, limit: int, ids: list[str] | None, label: str) -> 
     if split:
         sql += " AND p.split=?"
         args.append(split)
-    sql += (" AND p.arxiv_id NOT IN (SELECT arxiv_id FROM stages WHERE stage='verdict' AND run_label=? AND status='done')"
-            " ORDER BY p.published DESC LIMIT ?")
+    sql += " AND p.arxiv_id NOT IN (SELECT arxiv_id FROM stages WHERE stage='verdict' AND run_label=? AND status='done')"
+    if fresh:  # autopilot: never re-spend on a paper some earlier run already attempted
+        sql += " AND p.arxiv_id NOT IN (SELECT arxiv_id FROM stages WHERE stage='build' AND status IN ('done','budget'))"
+    sql += " ORDER BY p.published DESC LIMIT ?"
     args += [label, limit]
     return [r["arxiv_id"] for r in db.q(sql, tuple(args))]
 
@@ -132,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     cy = sub.add_parser("cycle", help="one bot tick: watch -> prepare new -> reproduce next N -> dashboard")
     cy.add_argument("--prepare", type=int, default=20); cy.add_argument("--reproduce", type=int, default=1)
     cy.add_argument("--split", default=None); cy.add_argument("--label", default=None)
+    cy.add_argument("--fresh", action="store_true", help="only papers no earlier run has attempted")
     rv = sub.add_parser("review", help="CodeRabbit-style review of one paper: run the pipeline live, write the review")
     rv.add_argument("paper", nargs="?", help="arXiv id or URL"); rv.add_argument("--repo", help="override the code repository URL")
     rv.add_argument("--pdf", "--file", dest="pdf", help="review an unpublished paper from a local file: PDF, LaTeX "
@@ -209,11 +212,19 @@ def main(argv: list[str] | None = None) -> int:
                     print("BUDGET STOP:", ex); break
                 except Exception as ex:
                     print("prepare failed", r["arxiv_id"], type(ex).__name__, flush=True)
-            for pid in _queue(a.split, a.reproduce, None, lab):
+            import shutil
+            from pathlib import Path
+            for pid in _queue(a.split, a.reproduce, None, lab, fresh=a.fresh):
+                free_gb = shutil.disk_usage(Path.home().anchor).free / 1e9
+                if free_gb < 5:
+                    print(f"DISK STOP: only {free_gb:.1f} GB free on the Docker host disk", flush=True)
+                    break
                 try:
-                    print("reproduce", pid, json.dumps(reproduce(pid, lab, BUILDER_VARIANT)), flush=True)
+                    print("reproduce", pid, json.dumps(reproduce(pid, lab, BUILDER_VARIANT), default=str), flush=True)
                 except ledger.BudgetExceeded as ex:
                     print("BUDGET STOP:", ex); break
+                except Exception as ex:
+                    print("reproduce failed", pid, type(ex).__name__, str(ex)[:300], flush=True)
             print("dashboard:", render(public=False), render(public=True))
         elif a.cmd == "improve":
             from .improver import improve
