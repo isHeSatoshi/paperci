@@ -40,3 +40,5 @@ backups/
 data/uploads/
 registry/
 data/neatlogs_prompts.json
+data/evolve/
+data/builder_policy.py

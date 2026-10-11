@@ -60,7 +60,9 @@ def funnel() -> dict:
     acc = [t for t in tri if t["out"].get("decision") == "accept"]
     cl = _stage_rows("claims", "shared")
     with_claims = [c for c in cl if c["out"].get("n_claims", 0) > 0]
-    labels = [r["run_label"] for r in db.q("SELECT DISTINCT run_label FROM stages WHERE stage='build'")]
+    # Evolution benchmark runs re-run the same few papers; they are reported by the evolution loop, not here.
+    labels = [r["run_label"] for r in db.q("SELECT DISTINCT run_label FROM stages WHERE stage='build' "
+                                           "AND run_label NOT LIKE 'evo-%'")]
     reject_reasons = Counter()
     for t in tri:
         if t["out"].get("decision") == "reject":

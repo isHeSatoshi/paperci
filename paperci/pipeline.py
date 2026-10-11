@@ -141,7 +141,12 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
     with tracing.span(f"paper:{arxiv_id}", kind="WORKFLOW", arxiv_id=arxiv_id, run_label=label,
                       variant=variant, split=paper["split"], builder_model=MODELS["builder"]) as root:
         tid = tracing.trace_id_of(root)
-        db.set_paper(arxiv_id, trace_id=tid, status=f"running:{label}")
+        # Evaluation runs of candidate builder versions: build + one offline verification only, and they never
+        # touch the paper's public verdict or status.
+        light = os.environ.get("PAPERCI_EVAL_LIGHT") == "1"
+        tracing.set_attr(root, "eval_light", light)
+        if not light:
+            db.set_paper(arxiv_id, trace_id=tid, status=f"running:{label}")
         healed = ensure_infra()
         if healed:
             tracing.log("self-heal before run: {healed}", healed=healed)
@@ -172,7 +177,7 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
 
         def robustness():
             runs, per_claim = list(ver["runs"]), json.loads(json.dumps(ver["per_claim"]))
-            if not runs or runs[0]["exit_code"] != 0 or runs[0]["seconds"] > 420 or not any(v["raw_values"] for v in per_claim.values()):
+            if light or not runs or runs[0]["exit_code"] != 0 or runs[0]["seconds"] > 420 or not any(v["raw_values"] for v in per_claim.values()):
                 return {"runs": runs, "per_claim": per_claim, "reruns": 0}
             with tracing.span("stage:robustness", kind="CHAIN", reruns=ROBUST_RERUNS):
                 for seed in range(1, ROBUST_RERUNS + 1):
@@ -212,11 +217,12 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
                                   not integ["flags"], f"{v} ({conf}): {reason}")
             return {"verdict": v, "confidence": conf, "reason": reason, "integrity": integ, "per_claim": per_claim}
         dec = _run_stage(arxiv_id, "verdict", label, decide, tid)
-        db.set_paper(arxiv_id, verdict=dec["verdict"], confidence=dec["confidence"], status=f"done:{label}")
+        if not light:
+            db.set_paper(arxiv_id, verdict=dec["verdict"], confidence=dec["confidence"], status=f"done:{label}")
         _write_report(arxiv_id, label, paper, snapshot, build, rob, dec, tid, sealed_sha)
 
         pkg = None
-        if dec["verdict"] != "blocked-infra" and not dec["integrity"]["flags"]:
+        if not light and dec["verdict"] != "blocked-infra" and not dec["integrity"]["flags"]:
             pkg = _run_stage(arxiv_id, "package", label, lambda: tasks.package(
                 arxiv_id, label, paper, snapshot, build, cl, dec["per_claim"], dec["verdict"],
                 dec["confidence"], tid, sealed_sha) or {"task_id": None}, tid)

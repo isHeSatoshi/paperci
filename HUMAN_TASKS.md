@@ -18,6 +18,17 @@ Submissions on https://44-215-70-124.sslip.io need an invite code (each run spen
 code). The codes are in `%TEMP%\paperci-deploy\codes.txt` on this machine and in the server's `.env`.
 They are not in git. Give one to judges and keep one for yourself. The live board needs no code.
 
+## B2. Approve or reject evolved control policies — when the board says one is waiting, ~5 min
+The nightly evolution loop (`docs/evolution.md`) adopts playbooks on its own, but a rewritten builder
+control policy (code) only goes live after you approve it. Read the file first.
+```
+ssh -i $env:USERPROFILE\.ssh\paperci_aws ubuntu@44.215.70.124
+cd ~/paperci; .venv/bin/python -m paperci.evolve pending      # id, bench score, file path
+less data/evolve/candidates/<id>/builder_policy.py             # read what it does
+.venv/bin/python -m paperci.evolve approve <id>                # or: reject <id>
+```
+The canary rolls an approved policy back automatically if live build rates drop afterwards.
+
 ## C. The cloud server — nothing to do, FYI
 It stops itself on 2026-10-16 23:59 IST. If you want it gone earlier (or after), run
 `python deploy/aws/provision.py down` with AWS credentials, or ask the agent to tear it down. Run

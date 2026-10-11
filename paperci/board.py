@@ -35,8 +35,8 @@ def _days(n: int = 7) -> list[dict]:
     for i in range(n - 1, -1, -1):
         start = midnight - i * 86400
         t = time.gmtime(start + ops.TZ_OFF)
-        rows = db.q("SELECT output FROM stages WHERE stage='build' AND status='done' AND finished_at>=? AND finished_at<?",
-                    (start, start + 86400))
+        rows = db.q("SELECT output FROM stages WHERE stage='build' AND status='done' AND finished_at>=? AND finished_at<? "
+                    "AND run_label NOT LIKE 'evo-%'", (start, start + 86400))
         built = sum(1 for r in rows if json.loads(r["output"]).get("status") == "built")
         cost = db.q1("SELECT COALESCE(SUM(cost_usd),0) c FROM spend WHERE ts>=? AND ts<?", (start, start + 86400))["c"]
         out.append({"day": time.strftime("%a %d", t), "attempts": len(rows), "built": built, "cost": cost})
@@ -44,7 +44,7 @@ def _days(n: int = 7) -> list[dict]:
 
 
 def _generations() -> list[dict]:
-    rows = db.q("SELECT output FROM stages WHERE stage='build' AND status='done'")
+    rows = db.q("SELECT output FROM stages WHERE stage='build' AND status='done' AND run_label NOT LIKE 'evo-%'")
     g: dict[int, list[int]] = {}
     for r in rows:
         o = json.loads(r["output"])
@@ -55,6 +55,35 @@ def _generations() -> list[dict]:
         g[k][0] += 1
         g[k][1] += o.get("status") == "built"
     return [{"gen": k, "attempts": v[0], "built": v[1]} for k, v in sorted(g.items())]
+
+
+def _evolution() -> str:
+    """Self-improvement rounds: no paper ids, only outcomes, strategies and what is waiting for a human."""
+    from . import evolve
+    e = html.escape
+    a = evolve.archive()
+    r = evolve._load(evolve.ROUND, {})
+    cur = ""
+    if r.get("status") in ("evaluating", "deciding"):
+        done = sum(1 for q in r["queue"] if q["status"] != "pending")
+        cur = (f"<div class=dr><span class='dotx warn'></span>Round {e(r['id'])} running: {done}/{len(r['queue'])} benchmark "
+               f"runs done, ${evolve.round_spend(r['id']):.2f} of ${r['budget']:.2f}</div>")
+    rounds = "".join(f"<div class=dr><span class='dotx {'ok' if 'adopted' in (x.get('outcome') or '') else 'na'}'></span>"
+                     f"<b>{e(x['id'])}</b> via {e(x.get('strategy') or '-')}: {e(x.get('outcome') or '')}"
+                     f"<span class=muted> &middot; ${x.get('spent') or 0:.2f}</span></div>" for x in reversed(a["rounds"][-5:]))
+    strat = "".join(f"<tr><td>{e(s['id'])}</td><td>{s['uses']}</td><td>{evolve._mean(s):+.2f}</td>"
+                    f"<td class=muted>{e((s['text'] or '(base improver)')[:90])}</td></tr>"
+                    for s in sorted(a["strategies"], key=evolve._mean, reverse=True))
+    pend = [c for c in a["candidates"].values() if c["status"] == "pending_approval"]
+    pend_txt = (f"<div class=dr><span class='dotx warn'></span>{len(pend)} evolved control polic{'y' if len(pend) == 1 else 'ies'} "
+                "beat the incumbent and wait for a human approval before running live</div>") if pend else ""
+    return (f"{cur}{pend_txt}{rounds or '<div class=muted>The first evolution round runs tonight.</div>'}"
+            f"<table class=gt><tr><th>improver strategy</th><th>used</th><th>mean gain</th><th></th></tr>{strat}</table>"
+            "<div class=muted style='margin-top:8px'>Every night the improver proposes a new playbook and a rewritten control "
+            "policy. Each is run for real on a fixed dev benchmark against the current version and adopted only if it scores "
+            "higher with no regression and no integrity flag. Code changes also need a human approval, and adopted changes are "
+            "re-checked on live papers and rolled back if worse. The improver's own strategy is scored the same way (the "
+            "recursive part). The verifier, sealed claims and cost limits are fingerprinted; any change voids the round.</div>")
 
 
 def _bars(days: list[dict]) -> str:
@@ -138,7 +167,9 @@ Papers are anonymized here.</div></div>
 <table class=gt><tr><th>playbook</th><th>attempts</th><th>built</th><th>build rate</th></tr>{gtab}</table>
 <div class=muted style="margin:10px 0 4px">Current playbook generation {pb.generation}: {len(pb.rules)} learned rules. A rule is adopted only if
 its regex matches its own failure class and almost nothing else, and its advice passes an integrity filter (no hardcoding,
-no skipping verification, allowlisted hosts only). Held-out papers never feed the learner.</div><ul class=rules>{rules}</ul></div></div>
+no skipping verification, allowlisted hosts only) and the new version beats the old one on a real benchmark run.
+Held-out papers never feed the learner.</div><ul class=rules>{rules}</ul></div>
+<div class=box><h4>Self-improvement &middot; tested before adopted</h4>{_evolution()}</div></div>
 <div><div class=box><h4>Activity</h4><div class=feed>{feed}</div></div>
 <div class=box><h4>Self-healing &middot; incidents repaired automatically</h4>{inc_rows}</div>
 <div class=box><h4>Chaos drills &middot; breaking itself on purpose, nightly</h4>{drill_rows}</div>

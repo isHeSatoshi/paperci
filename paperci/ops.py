@@ -33,7 +33,7 @@ WATCH_STATE = OPS / "watchdog.json"
 HEARTBEAT = OPS / "heartbeat.json"
 LAST_GOOD = OPS / "last_good_commit"
 # Hard wall-clock limits per worker job. A job past its limit is killed; a worker past limit + grace is "hung".
-LIMITS = {"prepare": 30 * 60, "run": 2 * 3600, "cycle": 2 * 3600, "nightly": 3600}
+LIMITS = {"prepare": 30 * 60, "run": 2 * 3600, "cycle": 2 * 3600, "nightly": 3600, "evolve": 80 * 60}
 GRACE = 600
 IDLE_BEAT_MAX = 180
 CYCLE_EVERY = int(os.getenv("PAPERCI_CYCLE_EVERY", "5400"))
@@ -128,9 +128,15 @@ def due() -> str | None:
     if not enabled():
         return None
     from . import ledger
+    from . import evolve
     st = _load(STATE)
     now = time.time()
     today = time.strftime("%Y-%m-%d", _local(now))
+    # Nightly and evolution steps come before the daily-cap pause: the evolution loop has its own budget.
+    if st.get("nightly_day") != today and _local(now).tm_hour >= NIGHTLY_HOUR:
+        return "nightly"
+    if evolve.has_pending() and os.getenv("PAPERCI_EVOLVE", "1") == "1":
+        return "evolve"
     cap = ledger.daily_cap()
     if cap is not None and ledger.today_total() >= cap * 0.9:
         if st.get("paused_day") != today:
@@ -139,8 +145,6 @@ def due() -> str | None:
             event("budget", f"Daily LLM budget reached (${ledger.today_total():.2f} of ${cap:.2f}); autopilot paused "
                             "until midnight. Author submissions still run.")
         return None
-    if st.get("nightly_day") != today and _local(now).tm_hour >= NIGHTLY_HOUR:
-        return "nightly"
     if now - st.get("last_cycle", 0) >= CYCLE_EVERY:
         return "cycle"
     return None
@@ -156,6 +160,17 @@ def run_due(kind: str) -> None:
             st["nightly_day"] = time.strftime("%Y-%m-%d", _local())
             _save(STATE, st)
             _sub([sys.executable, "-u", "-m", "paperci.ops", "nightly"], "nightly", LIMITS["nightly"])
+        elif kind == "evolve":
+            rc, out = _sub([sys.executable, "-u", "-m", "paperci.evolve", "step"], "evolve", LIMITS["evolve"])
+            # Poison guard: a step that keeps crashing voids the round instead of blocking the autopilot.
+            st = _load(STATE)
+            st["evolve_fail"] = 0 if rc == 0 else st.get("evolve_fail", 0) + 1
+            _save(STATE, st)
+            if st["evolve_fail"] >= 3:
+                from . import evolve
+                evolve._void(evolve._load(evolve.ROUND, {}), f"evaluation step crashed 3 times (last rc {rc})")
+                st["evolve_fail"] = 0
+                _save(STATE, st)
         else:
             st["last_cycle"] = time.time()
             _save(STATE, st)
@@ -235,9 +250,12 @@ def nightly() -> dict:
     tracing.init("nightly", "-")
     res: dict = {}
     try:
-        res["improve"] = self_improve()
+        # Proposals are tested on a benchmark before adoption (paperci/evolve.py); the old direct
+        # self_improve() path adopted rules on static checks alone.
+        from . import evolve
+        res["evolve"] = evolve.start() if os.getenv("PAPERCI_EVOLVE", "1") == "1" else self_improve()
     except Exception as ex:
-        res["improve"] = {"error": f"{type(ex).__name__}: {str(ex)[:200]}"}
+        res["evolve"] = {"error": f"{type(ex).__name__}: {str(ex)[:200]}"}
         event("error", f"Nightly self-improvement failed: {type(ex).__name__}")
     try:
         res["chaos"] = chaos_drill()

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -59,9 +60,10 @@ def classify(output: str, exit_code: int, cmd: str = "") -> str | None:
     return "nonzero_exit"
 
 
-def load_playbook() -> Playbook:
-    if PLAYBOOK_PATH.exists():
-        return Playbook.model_validate_json(PLAYBOOK_PATH.read_text(encoding="utf-8"))
+def load_playbook(path: Path | None = None) -> Playbook:
+    p = path or PLAYBOOK_PATH
+    if p.exists():
+        return Playbook.model_validate_json(p.read_text(encoding="utf-8"))
     return Playbook()
 
 
@@ -74,7 +76,9 @@ class Recovery:
 
     def __init__(self, variant: str):
         self.variant = variant
-        self.playbook = load_playbook() if variant != "v1" else Playbook()
+        # PAPERCI_PLAYBOOK_PATH lets the evolution loop evaluate a candidate playbook without adopting it.
+        override = os.environ.get("PAPERCI_PLAYBOOK_PATH")
+        self.playbook = (load_playbook(Path(override) if override else None)) if variant != "v1" else Playbook()
         self._rx = []
         for r in self.playbook.rules:
             try:

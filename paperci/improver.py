@@ -119,7 +119,9 @@ def _gate(rule: PlaybookRule, clusters: dict[str, list[dict]]) -> tuple[bool, st
     return True, f"recall {hit_own}/{len(own)}, false hits {hit_other}/{len(others)}"
 
 
-def improve(labels: list[str], apply: bool = False, only_split: str | None = None) -> dict:
+def improve(labels: list[str], apply: bool = False, only_split: str | None = None, strategy: str = "",
+            run_label: str = "improver") -> dict:
+    """`strategy` is an extra instruction chosen by the evolution loop's meta level (paperci/evolve.py)."""
     clusters = _evidence(labels, only_split)
     with tracing.span("stage:improver", kind="AGENT", labels=labels, model=MODELS["builder"]) as s:
         if not clusters:
@@ -135,8 +137,9 @@ def improve(labels: list[str], apply: bool = False, only_split: str | None = Non
         user = (f"CATEGORIES: {sorted(clusters)}\n\nCURRENT EGRESS ALLOWLIST (regexes; hosts here are reachable NOW, "
                 f"even if old traces show them refused):\n{allow}\n\nEXISTING RULES:\n{existing}\n\nFAILURE CLUSTERS:\n" + "\n".join(summary)
                 + "\n\nPropose up to 8 new or revised rules (reuse a rule_id to revise it).")
-        prop = llm.chat_typed(ImproverProposal, system=SYSTEM, user=user[:24000], max_tokens=2000,
-                              arxiv_id="-", stage="improver", run_label="improver", model=MODELS["builder"])
+        system = SYSTEM + (f"\nSTRATEGY FOR THIS ROUND: {strategy}\n" if strategy else "")
+        prop = llm.chat_typed(ImproverProposal, system=system, user=user[:24000], max_tokens=2000,
+                              arxiv_id="-", stage="improver", run_label=run_label, model=MODELS["builder"])
         accepted, rejected = [], []
         for r in prop.rules:
             ok, why = _gate(r, clusters)

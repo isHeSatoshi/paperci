@@ -121,6 +121,19 @@
   paces the autopilot on top of the per-paper, per-stage and global stops (author submissions skip the daily
   pacing but not the web spend cap or the hard stop). The board only shows anonymized ids.
 
+### 2026-10-11 (Sun) night IST: self-improvement that is tested before it is trusted
+- Honest gap found: the nightly learner adopted playbook rules on static checks alone and never tested whether
+  the agent got better. Replaced it with an evolution loop (`docs/evolution.md`): candidates are a new playbook
+  and a rewritten builder control policy (`paperci/stages/builder_policy.py`, the one code file the agent may
+  edit, loaded through an AST-checked sandbox with no access to sealed values). Each candidate and the
+  incumbent run for real on a fixed dev benchmark; adoption needs a fitness margin, no regression and no
+  integrity flag. Code changes wait for a human approval; adopted changes are re-checked on live papers and
+  rolled back if worse.
+- Recursive part (depth 1): the improver's own strategy is chosen by UCB over the measured gains of its past
+  proposals, and a fixed meta prompt writes new strategies from that scoreboard.
+- The referee (verifier, sealing, tolerances, ledger, gate, this loop) is hash-pinned per round, together with
+  a hash over all sealed claims; a change voids the round. Budget $1.50 per round, one round per night.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).

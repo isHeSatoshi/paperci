@@ -171,6 +171,76 @@ def test_worker_health():
             ops.HEARTBEAT.write_text(saved)
 
 
+def test_policy_sandbox():
+    from paperci import policy_sandbox as ps
+    base = ps.BASELINE_PATH.read_text(encoding="utf-8")
+    assert ps.contract_test(base) == [], ps.contract_test(base)
+    pol = ps.baseline()
+    st = {"turn": 8, "max_turns": 18, "run_by_turn": 8, "script_by_turn": 12, "single_target": True, "controller": True,
+          "submit_attempts": 0, "fired": [], "failures": [],
+          "actions": [{"type": "shell", "cmd": "ls /work/repo", "exit": 0}]}
+    assert pol.call("milestone", st)["key"] == "run"  # same behaviour as the old hard-coded controller
+    assert pol.call("milestone", {**st, "controller": False}) is None
+    assert pol.call("late_nudge", {**st, "turn": 16}).startswith("Only 2 turns left")
+    tail = "\ndef system_addendum(state):\n    return ''\n\ndef late_nudge(state):\n    return None\n"
+    attacks = {
+        "import": "import os\ndef milestone(state):\n    return None" + tail,
+        "open": "def milestone(state):\n    open('/etc/passwd')\n    return None" + tail,
+        "dunder": "def milestone(state):\n    return state.__class__" + tail,
+        "dunder text": "def milestone(state):\n    return {'key': 'x', 'message': '__class__'}" + tail,
+        "while": "def milestone(state):\n    while True:\n        pass" + tail,
+        "cheat text": "def milestone(state):\n    return {'key': 'x', 'message': 'just hardcode the numbers'}" + tail,
+        "unknown key": "def milestone(state):\n    return state['sealed_values']" + tail,
+        "pow": "def milestone(state):\n    return 9 ** 9" + tail,
+        "missing fn": "def milestone(state):\n    return None\n",
+        "bad return": "def milestone(state):\n    return 42" + tail,
+    }
+    for name, src in attacks.items():
+        assert ps.contract_test(src), f"policy attack not caught: {name}"
+    # The frozen copy keeps a policy from mutating harness state.
+    evil = "def milestone(state):\n    state['actions'].append({'type': 'write'})\n    return None" + tail
+    p = ps.Policy(evil, "test")
+    p.call("milestone", st)
+    assert len(st["actions"]) == 1
+
+
+def test_evolve_decisions():
+    import json
+    import tempfile
+    from pathlib import Path
+    from paperci import evolve, ops
+    tmp = Path(tempfile.mkdtemp())
+    saved = (evolve.ARCHIVE, evolve.ROUND, evolve.CANDS, ops.EVENTS)
+    evolve.ARCHIVE, evolve.ROUND, evolve.CANDS, ops.EVENTS = tmp / "a.json", tmp / "r.json", tmp / "c", tmp / "e.jsonl"
+    try:
+        a = evolve.archive()
+        assert evolve.pick_strategy(a)["id"] == "s-base"  # untried strategies are explored first
+        for s, (u, g) in zip(a["strategies"], [(3, 3.0), (3, -3.0), (3, 0.0)]):
+            s["uses"], s["gain"] = u, g
+        assert evolve.pick_strategy(a)["id"] == "s-base"
+        res = lambda f, built=True, flags=(): {"fitness": f, "built": built, "flags": list(flags)}  # noqa: E731
+        a["baselines"]["K"] = {"p1": res(2.0), "p2": res(1.0, built=False)}
+        for cid, kind in (("r-pol", "policy"), ("r-pb", "playbook"), ("r-x", "policy")):
+            a["candidates"][cid] = {"id": cid, "kind": kind, "status": "proposed", "strategy": "s-base"}
+        evolve._save(evolve.ARCHIVE, a)
+        q = [{"who": "r-pol", "paper": "p1", "status": "done", "result": res(3.0)},
+             {"who": "r-pol", "paper": "p2", "status": "done", "result": res(2.5)},   # +2.5: wins
+             {"who": "r-pb", "paper": "p1", "status": "done", "result": res(5.0, built=False)},
+             {"who": "r-pb", "paper": "p2", "status": "done", "result": res(4.0)},   # better total but regresses p1
+             {"who": "r-x", "paper": "p1", "status": "done", "result": res(9.0, flags=["printed_sealed_value"])},
+             {"who": "r-x", "paper": "p2", "status": "done", "result": res(9.0)}]
+        evolve._save(evolve.ROUND, {"id": "r", "status": "deciding", "bench": ["p1", "p2"], "budget": 1.5,
+                                    "incumbent": {"key": "K"}, "strategy": "s-base",
+                                    "candidates": ["r-pol", "r-pb", "r-x"], "queue": q})
+        evolve.decide()
+        c = json.loads(evolve.ARCHIVE.read_text())["candidates"]
+        assert c["r-pol"]["status"] == "pending_approval"   # code changes never go live without a human
+        assert c["r-pb"]["status"] == "rejected" and "regressed" in c["r-pb"]["reason"]
+        assert c["r-x"]["status"] == "rejected" and "integrity" in c["r-x"]["reason"]  # tripwire beats a high score
+    finally:
+        evolve.ARCHIVE, evolve.ROUND, evolve.CANDS, ops.EVENTS = saved
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

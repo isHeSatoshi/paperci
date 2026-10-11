@@ -12,7 +12,7 @@ import shlex
 import time
 from pathlib import Path
 
-from .. import db, ledger, live, llm, tracing
+from .. import db, ledger, live, llm, policy_sandbox, tracing
 from ..config import (BUILDER_CAP_USD, BUILDER_MAX_TURNS, CMD_TIMEOUT_SEC, INTERNAL_NET, MODELS,
                       PAPER_WALL_SEC, RUN_TIMEOUT_SEC, RUNS_DIR, SANDBOX_IMAGE)
 from ..recovery import Recovery, classify, snippet_for
@@ -116,6 +116,8 @@ class Builder:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.recovery = Recovery(variant)
         self.ctrl = self.recovery.playbook.controller if self.recovery.enabled else None
+        # v1 is the no-learning ablation, so it always runs the shipped baseline policy.
+        self.policy = policy_sandbox.load_active() if self.recovery.enabled else policy_sandbox.baseline()
         self.fired: set[str] = set()
         self.failures: list[dict] = []
         self.writes: list[dict] = []
@@ -260,10 +262,12 @@ class Builder:
         pv = tracing.register_prompt(
             "paperci-builder-system", self.system, labels=(f"gen-{gen}", self.variant),
             note=f"playbook generation {gen}, variant {self.variant}",
-            config={"model": MODELS["builder"], "playbook_generation": gen, "variant": self.variant})
+            config={"model": MODELS["builder"], "playbook_generation": gen, "variant": self.variant,
+                    "policy": self.policy.id})
         prompt = {"system_prompt_template": self.system, "version": str(pv)} if pv else None
         with tracing.span("stage:builder", kind="AGENT", prompt=prompt, arxiv_id=self.arxiv_id, variant=self.variant,
-                          model=MODELS["builder"], playbook_generation=gen, prompt_version=pv or 0) as span:
+                          model=MODELS["builder"], playbook_generation=gen, prompt_version=pv or 0,
+                          policy_id=self.policy.id, policy_origin=self.policy.origin) as span:
             image = (self.recovery.playbook.image if self.recovery.enabled else "") or SANDBOX_IMAGE
             if image != SANDBOX_IMAGE and _docker("image", "inspect", image, check=False).returncode != 0:
                 # A learned image only exists where envlearn ran; elsewhere fall back to the base image.
@@ -292,7 +296,8 @@ class Builder:
             if self.ctrl.single_target:
                 sys += ("FOCUS: pick the ONE target metric that is cheapest to regenerate, get it end-to-end, submit. "
                         "One honestly measured metric (even at reduced scale) is a success; do not chase all targets.\n")
-        return sys
+        extra = self._policy("system_addendum")
+        return sys + (f"\n{extra}\n" if extra else "")
 
     def _initial_messages(self) -> list[dict]:
         tree = "\n".join(f"{t['path']} ({t['size']}B)" for t in self.snap["tree"][:220])
@@ -310,28 +315,35 @@ class Builder:
                 f"FILES:\n{tree}\n\nREADME (untrusted, numbers matching sealed claims redacted):\n{readme}")
         return [{"role": "system", "content": sys}, {"role": "user", "content": user}]
 
+    def _policy_state(self) -> dict:
+        c, mt = self.ctrl, (self.ctrl.max_turns if self.ctrl else BUILDER_MAX_TURNS)
+        return {"turn": self.turn, "max_turns": mt, "run_by_turn": c.run_by_turn if c else 0,
+                "script_by_turn": c.script_by_turn if c else 0, "single_target": bool(c and c.single_target),
+                "controller": bool(c), "submit_attempts": self.submit_attempts, "fired": sorted(self.fired),
+                "actions": [{"type": a["type"], "cmd": a.get("cmd", "")[:400], "exit": a.get("exit"),
+                             "path": a.get("path", "")} for a in self.actions],
+                "failures": [f["category"] for f in self.failures]}
+
+    def _policy(self, fn: str):
+        """Call the control policy; a policy that misbehaves is replaced by the baseline for the rest of the build."""
+        try:
+            return self.policy.call(fn, self._policy_state())
+        except Exception as e:
+            tracing.log("policy {pid} failed in {fn} ({err}); falling back to baseline", level="warning",
+                        pid=self.policy.id, fn=fn, err=f"{type(e).__name__}: {e}"[:200])
+            db.log_event(self.arxiv_id, self.run_label, "policy_fallback", {"policy": self.policy.id, "fn": fn})
+            self.policy = policy_sandbox.baseline()
+            return self.policy.call(fn, self._policy_state())
+
     def _milestones(self, messages: list[dict]) -> None:
-        """Harness-enforced controller (learned policy). Injects one mandatory
-        instruction per missed milestone; v1 has no controller."""
-        c = self.ctrl
-        if not c:
-            return
-        ran = any(a["type"] == "shell" and not re.match(r"\s*(ls|cat|head|tail|grep|find|sed -n|pip3? |wc|echo|#)", a["cmd"])
-                  for a in self.actions)
-        script = any(a["type"] == "write" and a["path"] == "/work/paperci_run.sh" for a in self.actions) or \
-            any(a["type"] == "shell" and "paperci_run.sh" in a["cmd"] and ">" in a["cmd"] for a in self.actions)
+        """Harness-enforced controller: the control policy may inject one mandatory instruction per milestone."""
+        m = self._policy("milestone")
         msg = None
-        if self.turn == c.run_by_turn and not ran and "run" not in self.fired:
-            self.fired.add("run")
-            msg = ("CONTROLLER (mandatory): you have not executed any repository code yet. Stop reading. In THIS turn, "
-                   "run the smallest end-to-end command that exercises the repo's code path for the easiest target "
-                   "(e.g. a tiny config / few iterations), or call give_up if the target is impossible here.")
-        elif self.turn == c.script_by_turn and not script and "script" not in self.fired:
-            self.fired.add("script")
-            msg = ("CONTROLLER (mandatory): write /work/paperci_run.sh NOW for the single target you can already compute "
-                   "(reduced scale is fine, declare it), test it once, then call submit. Do not explore further.")
+        if m and m["key"] not in self.fired:
+            self.fired.add(m["key"])
+            msg = m["message"]
         if msg:
-            live.emit("heal", f"turn {self.turn}  learned controller fired: {msg.split(':', 1)[1].strip()[:90]}", indent=1)
+            live.emit("heal", f"turn {self.turn}  learned controller fired: {msg.split(':', 1)[-1].strip()[:90]}", indent=1)
             tracing.log("controller milestone fired: {m}", m=msg[:60], turn=self.turn)
             db.log_event(self.arxiv_id, self.run_label, "controller", {"turn": self.turn, "msg": msg[:80]})
             messages.append({"role": "user", "content": msg})
@@ -344,9 +356,9 @@ class Builder:
             if time.time() - self.t0 > PAPER_WALL_SEC:
                 self.result = {"status": "wall_clock", "reason": f"exceeded {PAPER_WALL_SEC}s"}
                 return
-            remaining = max_turns - self.turn
-            if remaining == 2:
-                messages.append({"role": "user", "content": "Only 2 turns left: write /work/paperci_run.sh now and submit, or give_up."})
+            nudge = self._policy("late_nudge")
+            if nudge:
+                messages.append({"role": "user", "content": nudge})
             if messages[-1]["role"] != "user":
                 self._milestones(messages)
             resp = llm.chat(arxiv_id=self.arxiv_id, stage="builder", run_label=self.run_label,
@@ -383,6 +395,7 @@ class Builder:
         res = self.result
         res.setdefault("status", "error")
         res.update(turns=self.turn, variant=self.variant, playbook_generation=self.recovery.playbook.generation,
+                   policy_id=self.policy.id, policy_origin=self.policy.origin,
                    seconds=round(time.time() - self.t0, 1), pip_packages=sorted(set(self.pip)),
                    failures=self.failures, playbook_rules_used=self.recovery.used_rules,
                    cost_usd=round(ledger.paper_total(self.arxiv_id, self.run_label, "builder"), 4))
