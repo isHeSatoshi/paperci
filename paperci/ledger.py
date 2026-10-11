@@ -78,7 +78,8 @@ def today_total() -> float:
     start = ((time.time() + off) // 86400) * 86400 - off
     start = max(start, float(os.getenv("PAPERCI_CAP_SINCE", "0")))  # deploy time: history copied in doesn't count
     # Evolution rounds have their own nightly budget, so they do not eat the autopilot's daily pacing.
-    r = db.q1("SELECT COALESCE(SUM(cost_usd),0) AS s FROM spend WHERE ts>=? AND run_label NOT LIKE 'evo-%'", (start,))
+    r = db.q1("SELECT COALESCE(SUM(cost_usd),0) AS s FROM spend WHERE ts>=? AND run_label NOT LIKE 'evo-%' "
+              "AND run_label NOT LIKE 'icml-%'", (start,))
     return float(r["s"]) if r else 0.0
 
 
@@ -97,7 +98,7 @@ def precheck(arxiv_id: str, run_label: str, est_cost: float, stage_cap: float | 
     # The daily cap paces the autopilot across days. Author submissions are already gated by invite codes,
     # a per-IP rate limit, the web spend cap and the hard stop above, so they are not starved by it. The
     # evolution loop has its own nightly budget (paperci/evolve.py) and is exempt for the same reason.
-    exempt = os.getenv("PAPERCI_AUTHOR_JOB") == "1" or os.getenv("PAPERCI_EVOLVE_JOB") == "1"
+    exempt = any(os.getenv(k) == "1" for k in ("PAPERCI_AUTHOR_JOB", "PAPERCI_EVOLVE_JOB", "PAPERCI_BUDGETED_JOB"))
     if cap is not None and not allow_reserve and not exempt:
         t = today_total()
         if t + est_cost > cap:

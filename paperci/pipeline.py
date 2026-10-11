@@ -222,7 +222,8 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
         _write_report(arxiv_id, label, paper, snapshot, build, rob, dec, tid, sealed_sha)
 
         pkg = None
-        if not light and dec["verdict"] != "blocked-infra" and not dec["integrity"]["flags"]:
+        skip_pkg = os.environ.get("PAPERCI_SKIP_PACKAGE") == "1"  # external evals only need the verdict
+        if not light and not skip_pkg and dec["verdict"] != "blocked-infra" and not dec["integrity"]["flags"]:
             pkg = _run_stage(arxiv_id, "package", label, lambda: tasks.package(
                 arxiv_id, label, paper, snapshot, build, cl, dec["per_claim"], dec["verdict"],
                 dec["confidence"], tid, sealed_sha) or {"task_id": None}, tid)

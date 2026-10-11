@@ -626,6 +626,87 @@ def board_review(name: str):
     return FileResponse(REVIEWS / name, media_type="text/html")
 
 
+CHOICES = {"paperci": "PaperCI is right", "hf": "Hugging Face consensus is right", "both": "Both partly right",
+           "unclear": "Can't tell from the evidence"}
+
+
+def _reviewer(code: str) -> str:
+    # Named-paper verdicts are never public: the review queue needs an invite code like submissions do.
+    if INVITES and code.strip() not in INVITES:
+        raise HTTPException(403, "invite code required")
+    return hashlib.sha256(code.strip().encode()).hexdigest()[:8]
+
+
+@app.get("/icml/review", response_class=HTMLResponse)
+def icml_review(code: str = "", show: str = "todo"):
+    from . import icml_eval
+    if INVITES and code.strip() not in INVITES:
+        return _page("ICML eval review", "<div class=wrap style='padding:40px 0'><h1>ICML eval review</h1>"
+                     "<form><input name=code placeholder='invite code' required> <button class=btn2>Open</button></form></div>")
+    _reviewer(code)
+    e = html.escape
+    q = f"code={e(code)}"
+    s = icml_eval.score()
+    xs = icml_eval.items()
+    todo = [x for x in xs if not x["human"] and (x["agree"] is False or not x["decided"])]
+    shown = todo if show == "todo" else xs
+    cards = []
+    for x in shown:
+        r = x["run"]["result"]
+        hf_claims = "".join(
+            f"<li>{e(c['claim'][:240])} <span class=muted>{e(json.dumps(c['verdicts']))}</span>"
+            + "".join(f"<div class=muted style='margin:4px 0 0 10px'>[{e(ev['verdict'])}] {e(ev['text'][:300])} "
+                      f"<a href='https://huggingface.co/spaces/{e(ev['space'])}' target=_blank>logbook</a></div>"
+                      for ev in c["evidence"][:1]) + "</li>" for c in x["claims"][:6])
+        ours = "".join(f"<li>{e(str(c['id']))} {e(str(c['metric'] or ''))}: claimed {e(str(c['claimed']))}, measured "
+                       f"{e(str(c['measured']))} (n={e(str(c['n']))}, within tolerance: {e(str(c['within']))})</li>"
+                       for c in r["claims"]) or "<li class=muted>no metric measured</li>"
+        rev = (f" &middot; <a href='/icml/r/{e(x['arxiv'])}?{q}' target=_blank>full PaperCI review</a>"
+               if x["run"].get("review") else "")
+        tag = ("agrees" if x["agree"] else "disagrees") if x["decided"] else "PaperCI made no decision"
+        done = f"<div class=muted>Reviewed: {e(CHOICES.get(x['human']['choice'], x['human']['choice']))}</div>" if x["human"] else ""
+        buttons = "".join(f"<button class=btn2 name=choice value={k} style='margin:4px 6px 0 0'>{e(v)}</button>"
+                          for k, v in CHOICES.items())
+        cards.append(f"""<div class=box><h4><a href="https://arxiv.org/abs/{e(x['arxiv'])}" target=_blank>{e(x['title'])}</a>
+<span class=muted>arXiv {e(x['arxiv'])} &middot; {e(x.get('area') or '')}</span></h4>
+<div><b>Hugging Face consensus: {e(x['label'])}</b> ({int(x['consensus_share'] * 100)}% of {x['n_logbooks']}
+medium/high-quality logbooks) &middot; <b>PaperCI: {e(r['verdict'] or '-')}</b> ({e(tag)}){rev}</div>
+<div class=muted style="margin:6px 0">PaperCI's reason: {e(r['reason'][:400])} &middot; build {e(str(r['build']))}, {e(str(r['turns']))} turns</div>
+<details><summary>Hugging Face claims and evidence</summary><ul>{hf_claims}</ul></details>
+<details><summary>PaperCI measurements</summary><ul>{ours}</ul></details>{done}
+<form method=post action="/icml/label"><input type=hidden name=code value="{e(code)}"><input type=hidden name=arxiv value="{e(x['arxiv'])}">
+<textarea name=note rows=2 placeholder="Why? (optional, kept with the label)" style="width:100%;margin-top:8px"></textarea>{buttons}</form></div>""")
+    head = (f"<p>{s['runs']} papers run blind, PaperCI decided on {s['decided']} (coverage {s['coverage']}), agreed with the "
+            f"Hugging Face consensus on {s['agree']} of those (agreement {s['agreement']}). {s['human_reviewed']} human-reviewed: "
+            f"PaperCI right {s['human_says_paperci_right']}, Hugging Face right {s['human_says_hf_right']}.</p>"
+            f"<p><a href='/icml/review?{q}&show=todo'>needs review ({len(todo)})</a> &middot; <a href='/icml/review?{q}&show=all'>all ({len(xs)})</a></p>")
+    return _page("ICML eval review", f"<div class=wrap style='padding:20px 0 60px'><h1>ICML 2026 external eval: human review</h1>"
+                 "<p class=muted>Hugging Face labels come from an LLM judge reading community agent logbooks; your decision "
+                 "turns a disagreement into a gold label. Private: named-paper verdicts are only shown here.</p>"
+                 + head + ("".join(cards) or "<p class=muted>Nothing waiting for review.</p>") + "</div>")
+
+
+@app.post("/icml/label")
+def icml_label(code: str = Form(""), arxiv: str = Form(...), choice: str = Form(...), note: str = Form("")):
+    from . import icml_eval
+    who = _reviewer(code)
+    if choice not in CHOICES or not re.fullmatch(r"\d{4}\.\d{4,5}", arxiv):
+        raise HTTPException(400)
+    icml_eval.add_label(arxiv, choice, note, who)
+    return RedirectResponse(f"/icml/review?code={code}", status_code=303)
+
+
+@app.get("/icml/r/{arxiv}")
+def icml_review_file(arxiv: str, code: str = ""):
+    from . import icml_eval
+    _reviewer(code)
+    run = next((r for r in icml_eval._load(icml_eval.STATE, {"runs": []})["runs"] if r["arxiv"] == arxiv), None)
+    p = Path(run["review"]) if run and run.get("review") else None
+    if not p or not p.exists() or REGISTRY_DIR.resolve() not in p.resolve().parents:
+        raise HTTPException(404)
+    return FileResponse(p, media_type="text/html")
+
+
 @app.post("/submit")
 async def submit(request: Request, email: str = Form(...), arxiv: str = Form(""), repo: str = Form(""),
                  consent: str = Form(""), invite: str = Form(""), paper: UploadFile | None = File(None)):

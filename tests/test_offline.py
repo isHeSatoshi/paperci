@@ -265,6 +265,41 @@ def test_author_preempts_background_job():
         ops.author_waiting, ops._remove_sandboxes, ops.EVENTS, ops.OPS = saved
 
 
+def test_icml_consensus_and_score():
+    import tempfile
+    from pathlib import Path
+    from paperci import icml_eval as ie
+    tmp = Path(tempfile.mkdtemp())
+    saved = (ie.ICML, ie.CANDS, ie.STATE, ie.LABELS, ie.BENCH_FILE, ie._get, ie.ours)
+    ie.ICML, ie.CANDS, ie.STATE, ie.LABELS, ie.BENCH_FILE = tmp, tmp / "c.json", tmp / "s.json", tmp / "l.jsonl", tmp / "b.json"
+    lb = lambda o, v, q="high", s="u/x": {"orid": o, "quality": q, "space_id": s,  # noqa: E731
+                                         "claims": [{"claim": "C1", "verdict": v, "evidence": "e"}]}
+    data = {"papers.json": {"papers": [{"orid": o, "arxiv": a, "title": o, "area": "T"} for o, a in
+                                       (("A", "2601.00001"), ("B", "2601.00002"), ("C", "2601.00003"), ("D", "2601.00004"))]},
+            "verdicts_final.json": {str(i): x for i, x in enumerate([
+                lb("A", "verified"), lb("A", "verified"),                       # clean verified
+                lb("B", "falsified"), lb("B", "falsified"), lb("B", "verified", "low"),  # low quality ignored
+                lb("C", "verified"), lb("C", "falsified"),                      # contested: excluded
+                lb("D", "verified")])}}                                         # one logbook: excluded
+    ie._get = lambda name, repo: data[name]
+    try:
+        out = ie.fetch()
+        assert out == {"candidates": 2, "verified": 1, "falsified": 1}, out
+        cands = ie._load(ie.CANDS, [])
+        for c in cands:
+            c["screen"], c["role"] = {"status": "runnable"}, "eval"
+        ie._save(ie.CANDS, cands)
+        ie._save(ie.STATE, {"runs": [{"arxiv": "2601.00001", "status": "done", "result": {"verdict": "verified"}},
+                                     {"arxiv": "2601.00002", "status": "done", "result": {"verdict": "blocked-infra"}}]})
+        s = ie.score()
+        assert s["runs"] == 2 and s["decided"] == 1 and s["agree"] == 1 and s["needs_review"] == 1, s
+        ie.add_label("2601.00002", "hf", "no code ran", "rev1")
+        s = ie.score()
+        assert s["human_reviewed"] == 1 and s["human_says_hf_right"] == 1 and s["needs_review"] == 0, s
+    finally:
+        ie.ICML, ie.CANDS, ie.STATE, ie.LABELS, ie.BENCH_FILE, ie._get, ie.ours = saved
+
+
 def test_go_replies_start_the_run():
     from paperci.web import GO
     for t in ("Go ahead with your plan.", "go", "Go!", "do everything", "ok", "start", "yes"):

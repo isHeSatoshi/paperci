@@ -41,4 +41,5 @@ data/uploads/
 registry/
 data/neatlogs_prompts.json
 data/evolve/
+data/icml/
 data/builder_policy.py

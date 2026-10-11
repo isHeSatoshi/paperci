@@ -33,7 +33,8 @@ WATCH_STATE = OPS / "watchdog.json"
 HEARTBEAT = OPS / "heartbeat.json"
 LAST_GOOD = OPS / "last_good_commit"
 # Hard wall-clock limits per worker job. A job past its limit is killed; a worker past limit + grace is "hung".
-LIMITS = {"prepare": 30 * 60, "run": 2 * 3600, "cycle": 2 * 3600, "nightly": 3600, "evolve": 80 * 60}
+LIMITS = {"prepare": 30 * 60, "run": 2 * 3600, "cycle": 2 * 3600, "nightly": 3600, "evolve": 80 * 60,
+          "icml": 110 * 60, "golden": 110 * 60}
 GRACE = 600
 IDLE_BEAT_MAX = 180
 CYCLE_EVERY = int(os.getenv("PAPERCI_CYCLE_EVERY", "5400"))
@@ -137,6 +138,11 @@ def due() -> str | None:
         return "nightly"
     if evolve.has_pending() and os.getenv("PAPERCI_EVOLVE", "1") == "1":
         return "evolve"
+    from . import icml_eval
+    if icml_eval.golden_pending():
+        return "golden"
+    if icml_eval.has_pending():
+        return "icml"
     cap = ledger.daily_cap()
     if cap is not None and ledger.today_total() >= cap * 0.9:
         if st.get("paused_day") != today:
@@ -160,6 +166,12 @@ def run_due(kind: str) -> None:
             st["nightly_day"] = time.strftime("%Y-%m-%d", _local())
             _save(STATE, st)
             _sub([sys.executable, "-u", "-m", "paperci.ops", "nightly"], "nightly", LIMITS["nightly"])
+        elif kind in ("icml", "golden"):
+            from . import icml_eval
+            rc, _ = _sub([sys.executable, "-u", "-m", "paperci.icml_eval", "step" if kind == "icml" else "golden-step"],
+                         kind, LIMITS[kind], preemptible=True)
+            if rc == PREEMPTED and kind == "icml":
+                icml_eval.release()
         elif kind == "evolve":
             rc, out = _sub([sys.executable, "-u", "-m", "paperci.evolve", "step"], "evolve", LIMITS["evolve"],
                            preemptible=True)
@@ -298,6 +310,11 @@ def nightly() -> dict:
     except Exception as ex:
         res["evolve"] = {"error": f"{type(ex).__name__}: {str(ex)[:200]}"}
         event("error", f"Nightly self-improvement failed: {type(ex).__name__}")
+    try:
+        from . import icml_eval
+        res["golden"] = icml_eval.golden_enqueue()
+    except Exception as ex:
+        res["golden"] = {"error": f"{type(ex).__name__}: {str(ex)[:200]}"}
     try:
         res["chaos"] = chaos_drill()
     except Exception as ex:

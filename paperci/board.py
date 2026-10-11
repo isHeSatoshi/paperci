@@ -86,6 +86,25 @@ def _evolution() -> str:
             "recursive part). The verifier, sealed claims and cost limits are fingerprinted; any change voids the round.</div>")
 
 
+def _external() -> str:
+    """Agreement with Hugging Face's ICML 2026 community reproductions: aggregate numbers only, no paper names."""
+    from . import icml_eval
+    st = icml_eval.status()
+    s = st["score"]
+    runs = st["runs"]
+    if not s["runs"] and not runs:
+        return "<div class=muted>Not started yet.</div>"
+    pct = (lambda v: f"{v * 100:.0f}%" if v is not None else "-")
+    return (f"<div class=kpis style='grid-template-columns:repeat(4,1fr)'><div class=kpi><b>{s['runs']}</b>papers run blind</div>"
+            f"<div class=kpi><b>{pct(s['coverage'])}</b>PaperCI reached a verdict</div>"
+            f"<div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div>"
+            f"<div class=kpi><b>{s['human_reviewed']}</b>disagreements human-reviewed</div></div>"
+            f"<div class=muted>Queue: {html.escape(json.dumps(runs))}. Reference labels: papers where at least two "
+            "independent teams in Hugging Face's ICML 2026 Open Reproductions agreed (verified or falsified, judged by "
+            "GLM-5.2 from their logbooks). PaperCI never sees those labels; a human reviews every disagreement and that "
+            "decision becomes the gold label. Benchmark papers used to evolve the agent are excluded from this score.</div>")
+
+
 def _bars(days: list[dict]) -> str:
     mx = max([d["attempts"] for d in days] + [1])
     cols = []
@@ -169,7 +188,8 @@ Papers are anonymized here.</div></div>
 its regex matches its own failure class and almost nothing else, and its advice passes an integrity filter (no hardcoding,
 no skipping verification, allowlisted hosts only) and the new version beats the old one on a real benchmark run.
 Held-out papers never feed the learner.</div><ul class=rules>{rules}</ul></div>
-<div class=box><h4>Self-improvement &middot; tested before adopted</h4>{_evolution()}</div></div>
+<div class=box><h4>Self-improvement &middot; tested before adopted</h4>{_evolution()}</div>
+<div class=box><h4>External check &middot; vs Hugging Face ICML 2026 community reproductions</h4>{_external()}</div></div>
 <div><div class=box><h4>Activity</h4><div class=feed>{feed}</div></div>
 <div class=box><h4>Self-healing &middot; incidents repaired automatically</h4>{inc_rows}</div>
 <div class=box><h4>Chaos drills &middot; breaking itself on purpose, nightly</h4>{drill_rows}</div>

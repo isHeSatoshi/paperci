@@ -41,7 +41,21 @@ CANDS = EVO / "candidates"
 BACKUPS = EVO / "backups"
 ARCHIVE = EVO / "archive.json"
 ROUND = EVO / "round.json"
-BENCH = [p.strip() for p in os.getenv("PAPERCI_EVOLVE_BENCH", "2503.01072,2501.14570").split(",") if p.strip()]
+def _bench() -> list[str]:
+    """Explicit env list, else the ICML papers whose outcome independent teams agreed on (paperci/icml_eval.py),
+    else the original two dev papers."""
+    if os.getenv("PAPERCI_EVOLVE_BENCH"):
+        return [p.strip() for p in os.environ["PAPERCI_EVOLVE_BENCH"].split(",") if p.strip()]
+    try:
+        icml = json.loads((DATA_DIR / "icml" / "bench.json").read_text(encoding="utf-8"))
+        if len(icml) >= 2:
+            return icml
+    except Exception:
+        pass
+    return ["2503.01072", "2501.14570"]
+
+
+BENCH = _bench()
 BUDGET = float(os.getenv("PAPERCI_EVOLVE_BUDGET", "1.50"))
 EST_RUN = 0.25           # conservative cost of one build + offline verification (measured mean ~$0.17)
 EVAL_TIMEOUT = 75 * 60
