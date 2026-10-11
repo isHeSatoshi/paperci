@@ -8,6 +8,9 @@
     }
   },
   "redaction": {
+    "custom_redactions": {
+      "factory_api_key": "fk-[A-Za-z0-9_-]{20,}"
+    },
     "pii": {
       "enabled": true,
       "email": true,

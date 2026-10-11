@@ -119,6 +119,8 @@ def referee(bench: list[str]) -> dict:
     """Fingerprint of everything a candidate must never influence, including the benchmark's sealed claims
     (only the bench: other papers are sealed all the time by the autopilot and by authors)."""
     h = {f: _sha(ROOT / f) for f in FROZEN}
+    # The models are part of the referee too: a builder on another model is a different incumbent.
+    h["models"] = hashlib.sha256(json.dumps(MODELS, sort_keys=True).encode()).hexdigest()[:16]
     rows = db.q("SELECT arxiv_id, sha256 FROM sealed_claims WHERE arxiv_id IN (%s) ORDER BY arxiv_id"
                 % ",".join("?" * len(bench)), tuple(bench))
     h["sealed_claims"] = hashlib.sha256("".join(f"{r['arxiv_id']}:{r['sha256']}" for r in rows).encode()).hexdigest()[:16]

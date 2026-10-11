@@ -36,11 +36,15 @@ MODELS = {
     "builder": os.getenv("PAPERCI_MODEL_BUILDER", "claude-sonnet-4.6"),
     "verifier": os.getenv("PAPERCI_MODEL_VERIFIER", "nova-pro"),
     "solver": os.getenv("PAPERCI_MODEL_SOLVER", "claude-haiku"),
+    "concierge": os.getenv("PAPERCI_MODEL_CONCIERGE", "claude-haiku"),
 }
+# One model for every role (e.g. factory:glm-5.3-flash). This gives up the builder/verifier family split.
+if os.getenv("PAPERCI_MODEL_ALL"):
+    MODELS = {k: os.environ["PAPERCI_MODEL_ALL"] for k in MODELS}
 MODEL_FAMILY = {
     "nova-micro": "amazon-nova", "nova-lite": "amazon-nova", "nova-pro": "amazon-nova",
     "nova-2-lite": "amazon-nova", "claude-haiku": "anthropic", "claude-sonnet-4.6": "anthropic",
-    "claude-opus-4.6": "anthropic",
+    "claude-opus-4.6": "anthropic", "factory:glm-5.3-flash": "zhipu-glm",
 }
 FORBIDDEN_MODELS = {"claude-opus-4.6"}
 
@@ -54,6 +58,9 @@ PRICES = {
     "claude-haiku": {"in": 1.1e-06, "out": 5.5e-06, "cache_read": 1.1e-07, "cache_write": 1.375e-06},
     "claude-sonnet-4.6": {"in": 3.3e-06, "out": 1.65e-05, "cache_read": 3.3e-07, "cache_write": 4.125e-06},
     "claude-opus-4.6": {"in": 5.5e-06, "out": 2.75e-05},
+    # Billed in Factory credits, not on the LiteLLM key; this USD estimate only keeps the per-paper and
+    # per-stage caps meaningful (conservative list-price guess for a flash-class open model).
+    "factory:glm-5.3-flash": {"in": 1.0e-07, "out": 4.0e-07},
 }
 
 # Budget. The key has a $20 / 30 day allowance shared by the team.

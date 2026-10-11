@@ -74,10 +74,13 @@ def chat(*, arxiv_id: str, stage: str, run_label: str, model: str, messages: lis
     last_err: Exception | None = None
     for attempt in range(LLM_MAX_RETRIES + 1):
         try:
-            resp = client().chat.completions.create(**kwargs)
+            if model.startswith(FACTORY_PREFIX):
+                resp = _factory_chat(model, messages, tools, stage)
+            else:
+                resp = client().chat.completions.create(**kwargs)
             break
         except (openai.RateLimitError, openai.APIConnectionError, openai.APITimeoutError,
-                openai.InternalServerError) as e:
+                openai.InternalServerError, FactoryError) as e:
             last_err = e
             tracing.log("llm retry {attempt} after {err}", level="warning", attempt=attempt,
                         err=type(e).__name__, model=model, stage=stage)
@@ -96,6 +99,108 @@ def chat(*, arxiv_id: str, stage: str, run_label: str, model: str, messages: lis
     tracing.log("llm cost {stage} {model} ${cost:.5f}", stage=stage, model=model, cost=cost,
                 prompt_tokens=pt, completion_tokens=ct, cache_read=cr, cache_write=cw)
     return resp
+
+
+# ---------------------------------------------------------------- Factory (Droid) backend
+# A Factory API key has no chat-completions endpoint, so a call becomes one locked-down `droid exec` run:
+# a fresh empty working directory, only the TodoWrite tool (no shell, file, web or MCP access on the host),
+# and tool calls returned as JSON that is mapped back to the OpenAI response shape the agents already use.
+FACTORY_PREFIX = "factory:"
+FACTORY_TIMEOUT = int(os.getenv("PAPERCI_FACTORY_TIMEOUT", "420"))
+
+
+class FactoryError(Exception):
+    pass
+
+
+def _flatten(messages: list[dict], tools: list | None) -> str:
+    def text(c: Any) -> str:
+        if isinstance(c, list):
+            return "".join(b.get("text", "") for b in c if isinstance(b, dict))
+        return c or ""
+    parts = ["You are used as a plain language model inside an automated pipeline. Do not call any of your own "
+             "tools. Follow the SYSTEM instructions and answer the final turn of the conversation.\n"]
+    for m in messages:
+        role = m["role"]
+        if role == "system":
+            parts.append(f"=== SYSTEM ===\n{text(m.get('content'))}\n")
+        elif role == "tool":
+            parts.append(f"=== TOOL RESULT ({m.get('tool_call_id')}) ===\n{text(m.get('content'))}\n")
+        else:
+            body = text(m.get("content"))
+            for tc in m.get("tool_calls") or []:
+                f = tc["function"]
+                body += f"\n[called {f['name']} id={tc['id']} with {f['arguments']}]"
+            parts.append(f"=== {role.upper()} ===\n{body}\n")
+    if tools:
+        specs = [{"name": t["function"]["name"], "description": t["function"].get("description", ""),
+                  "parameters": t["function"].get("parameters", {})} for t in tools]
+        parts.append("=== YOUR TURN ===\nFunctions you can call (JSON schema):\n" + json.dumps(specs) +
+                     '\nReply with ONLY one JSON object, no prose outside it: {"content": "<one short sentence of '
+                     'reasoning>", "tool_calls": [{"name": "<function name>", "arguments": {...}}]}. Include at '
+                     "least one tool call; several independent calls may go in one reply.")
+    else:
+        parts.append("=== YOUR TURN ===\nReply as the assistant.")
+    return "\n".join(parts)
+
+
+def _droid() -> str:
+    import shutil
+    exe = os.getenv("PAPERCI_DROID_BIN") or shutil.which("droid") or shutil.which("droid.cmd")
+    if not exe:
+        raise FactoryError("droid CLI not found")
+    return exe
+
+
+def _factory_chat(model: str, messages: list[dict], tools: list | None, stage: str) -> Any:
+    import subprocess
+    import tempfile
+    import uuid
+    from types import SimpleNamespace as NS
+    if not os.environ.get("FACTORY_API_KEY"):
+        raise ValueError("FACTORY_API_KEY is not set")
+    prompt = _flatten(messages, tools)
+    with tempfile.TemporaryDirectory(prefix="pci-llm-") as cwd:
+        pf = os.path.join(cwd, "prompt.txt")
+        with open(pf, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        cmd = [_droid(), "exec", "-m", model[len(FACTORY_PREFIX):], "-r", os.getenv("PAPERCI_FACTORY_EFFORT", "low"),
+               "--output-format", "json", "-f", pf, "--cwd", cwd, "--disable-builtin-skills", "--restrict-tools", "TodoWrite"]
+        t0 = time.time()
+        with tracing.span(f"llm:{stage}", kind="LLM", model=model, prompt_chars=len(prompt)) as s:
+            try:
+                p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                   timeout=FACTORY_TIMEOUT, cwd=cwd, env=os.environ)
+            except subprocess.TimeoutExpired as e:
+                raise FactoryError(f"droid exec timed out after {FACTORY_TIMEOUT}s") from e
+            line = next((ln for ln in reversed(p.stdout.splitlines()) if ln.startswith("{")), "")
+            try:
+                out = json.loads(line)
+            except json.JSONDecodeError:
+                raise FactoryError(f"droid exec rc={p.returncode}: {(p.stderr or p.stdout)[-300:]}")
+            if out.get("is_error") or p.returncode != 0:
+                raise FactoryError(f"droid exec failed: {str(out.get('result') or p.stderr)[-300:]}")
+            u = out.get("usage") or {}
+            result = out.get("result") or ""
+            tracing.set_attr(s, "seconds", round(time.time() - t0, 1))
+            tracing.set_attr(s, "factory_credits", u.get("factory_credits"))
+            tracing.set_attr(s, "input_tokens", u.get("input_tokens"))
+            tracing.set_attr(s, "output_tokens", u.get("output_tokens"))
+            tracing.set_attr(s, "response", result[:3000])
+    content, calls = result, None
+    if tools:
+        try:
+            j = extract_json(result)
+            content = str(j.get("content") or "")
+            calls = [NS(id=f"call_{uuid.uuid4().hex[:10]}", type="function",
+                        function=NS(name=str(c["name"]), arguments=json.dumps(c.get("arguments") or {})))
+                     for c in (j.get("tool_calls") or []) if isinstance(c, dict) and c.get("name")] or None
+        except Exception:
+            content, calls = result, None  # the agent loop asks the model to call a tool
+    usage = NS(prompt_tokens=int(u.get("input_tokens") or 0), completion_tokens=int(u.get("output_tokens") or 0),
+               cache_read_input_tokens=int(u.get("cache_read_input_tokens") or 0),
+               cache_creation_input_tokens=int(u.get("cache_creation_input_tokens") or 0))
+    return NS(choices=[NS(message=NS(content=content, tool_calls=calls))], usage=usage)
 
 
 _JSON_RE = re.compile(r"\{.*\}|\[.*\]", re.S)

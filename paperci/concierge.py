@@ -18,10 +18,10 @@ import re
 from pydantic import BaseModel
 
 from . import db, llm, sources
-from .config import ROOT
+from .config import MODELS, ROOT
 from .stages import claims as claims_mod
 
-MODEL = "claude-haiku"
+MODEL = MODELS["concierge"]
 UNREACHABLE = re.compile(r"https?://(?:www\.)?(drive\.google\.com|docs\.google\.com|dropbox\.com|onedrive\.live\.com|"
                          r"1drv\.ms|box\.com|wandb\.ai|kaggle\.com|figshare\.com|mega\.nz|baidu\.com|pan\.baidu\.com)[^\s)\]]*", re.I)
 REACHABLE = ["GitHub (repos, releases, raw files)", "PyPI", "PyTorch wheels", "Hugging Face (models, datasets)",

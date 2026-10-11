@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-names = ("NEATLOGS_API_KEY", "LITELLM_API_KEY", "CRUSTDATA_API_KEY")
+names = ("NEATLOGS_API_KEY", "LITELLM_API_KEY", "CRUSTDATA_API_KEY", "FACTORY_API_KEY")
 secrets = {}
 for line in (ROOT / ".env").read_text().splitlines():
     k, _, v = line.partition("=")
