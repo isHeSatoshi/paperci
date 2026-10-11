@@ -35,7 +35,9 @@ HF = "https://huggingface.co/datasets/ICML-2026-agent-repro"
 SPLIT = "icml"
 BENCH_N = int(os.getenv("PAPERCI_ICML_BENCH_N", "2"))
 RUN_TIMEOUT = 100 * 60
-OURS = {"verified": "verified", "falsified-candidate": "falsified", "toy-scale": "toy"}  # anything else: no decision
+# Anything else is "no decision". A toy-scale run measured the claims at reduced scale, which can neither confirm
+# nor refute the paper's full-scale numbers, so it is reported separately instead of counting as a disagreement.
+OURS = {"verified": "verified", "falsified-candidate": "falsified"}
 
 
 def _load(p: Path, default):
@@ -321,7 +323,13 @@ def score() -> dict:
          # Over all runs, counting "no decision" as a miss: how often each HF class is recovered end to end.
          "verified_recovered": f"{sum(1 for x in by['verified'] if x['agree'])}/{len(by['verified'])}",
          "falsified_recovered": f"{sum(1 for x in by['falsified'] if x['agree'])}/{len(by['falsified'])}",
-         "built": sum(1 for x in xs if x["run"]["result"].get("build") == "built")}
+         "built": sum(1 for x in xs if x["run"]["result"].get("build") == "built"),
+         "toy_scale": sum(1 for x in xs if x["run"]["result"].get("verdict") == "toy-scale"),
+         "reduced_claims_matched": "%d/%d" % (
+             sum(1 for x in xs if x["run"]["result"].get("verdict") == "toy-scale"
+                 for c in x["run"]["result"].get("claims") or [] if c.get("within")),
+             sum(1 for x in xs if x["run"]["result"].get("verdict") == "toy-scale"
+                 for c in x["run"]["result"].get("claims") or [] if c.get("measured") is not None))}
     _save(ICML / "score.json", s)
     return s
 

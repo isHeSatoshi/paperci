@@ -663,6 +663,11 @@ def icml_page():
         if x["decided"]:
             tag = ("<span style='color:#16a34a;font-weight:700'>agrees</span>" if x["agree"]
                    else "<span style='color:#dc2626;font-weight:700'>disagrees</span>")
+        elif r.get("verdict") == "toy-scale":
+            cs = [c for c in r.get("claims") or [] if c.get("measured") is not None]
+            tag = (f"<span style='color:#b45309;font-weight:700'>reduced scale only</span> "
+                   f"<span class=muted>({sum(1 for c in cs if c.get('within'))}/{len(cs)} measured claims matched; "
+                   "no full-scale verdict)</span>")
         else:
             tag = "<span class=muted style='font-weight:700'>no decision</span>"
         rev = (f" &middot; <a href='/icml/r/{e(x['arxiv'])}' target=_blank>full PaperCI review</a>"
@@ -681,8 +686,8 @@ build {e(str(r.get('build')))}, {e(str(r.get('turns')))} agent turns</div>
     queue = (f"<p class=muted>In the queue ({len(busy)}): {e('; '.join(t[:70] for t in busy[:20]))}</p>" if busy else "")
     head = f"""<div class=kpis style='grid-template-columns:repeat(5,1fr)'>
 <div class=kpi><b>{s['runs']}</b>papers run blind</div><div class=kpi><b>{s['built']}</b>built and run offline</div>
-<div class=kpi><b>{pct(s['coverage'])}</b>reached a verdict</div><div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div>
-<div class=kpi><b>{e(s['verified_recovered'])} &middot; {e(s['falsified_recovered'])}</b>verified &middot; falsified recovered</div></div>"""
+<div class=kpi><b>{pct(s['coverage'])}</b>reached a full-scale verdict</div><div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div>
+<div class=kpi><b>{s['toy_scale']} &middot; {e(s['reduced_claims_matched'])}</b>reduced-scale runs &middot; claims matched</div></div>"""
     return _page("PaperCI on ICML 2026 papers", f"""<div class=wrap style='padding:20px 0 60px'>
 <h1>PaperCI on ICML 2026 papers</h1>
 <p>The answer key is <a href="https://huggingface.co/datasets/ICML-2026-agent-repro/verdicts" target=_blank rel=noopener>Hugging
@@ -691,7 +696,9 @@ graded their logbooks. We kept only papers where at least two medium- or high-qu
 the paper was verified or falsified. PaperCI runs each one blind: no agent ever sees the community verdict. Builder model:
 {e(MODELS['builder'])}; verifier model: {e(MODELS['verifier'])}.</p>
 <p class=muted>{e(AUTOMATED_NOTE)} The community labels come from an LLM judge, so they can be wrong too.
-"No decision" means PaperCI could not build or measure the paper within its limits.</p>{head}{queue}
+"No decision" means PaperCI could not build or measure the paper within its limits. "Reduced scale only" means the
+code ran and was measured on a smaller setting (fewer steps, seeds or data) that fits a CPU; it is evidence that the
+code works, not a verdict on the paper's full-scale numbers.</p>{head}{queue}
 {''.join(cards) or "<p class=muted>The first results appear here as runs finish.</p>"}</div>""")
 
 

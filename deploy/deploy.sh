@@ -32,6 +32,12 @@ $PY -c "import paperci.web, paperci.ops, paperci.board, paperci.pipeline" || rol
 $PY tests/test_offline.py > /tmp/paperci-tests.log 2>&1 || rollback "offline tests failed"
 sudo cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/ && sudo systemctl daemon-reload
 sudo systemctl restart paperci-web
+# The allowlist is baked into the proxy image: rebuild it when sandbox/proxy changed, and remove the running proxy
+# (the restart above already stopped every job using it); ensure_infra recreates it from the new image.
+if ! git diff --quiet "$GOOD" "$NEW" -- sandbox/proxy; then
+  docker build -q -t paperci/proxy:latest sandbox/proxy >/dev/null && docker rm -f paperci-egress >/dev/null 2>&1
+  $PY -c "from paperci.sandbox import ensure_infra; print(ensure_infra())" || rollback "egress proxy rebuild failed"
+fi
 healthy || rollback "service unhealthy after restart"
 echo "$NEW" > registry/ops/last_good_commit
 ev "Deployed ${NEW:0:8} (tests passed, service healthy)" true

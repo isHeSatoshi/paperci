@@ -3,7 +3,7 @@
 ^download(-r2)?\.pytorch\.org$
 ^github\.com$
 ^api\.github\.com$
-^(www|api)\.openml\.org$
+^((www|api)\.)?openml\.org$
 ^openml1\.win\.tue\.nl$
 ^data\.openml\.org$
 ^codeload\.github\.com$
@@ -13,6 +13,7 @@
 ^huggingface\.co$
 ^cdn-lfs(-us-1)?\.(huggingface\.co|hf\.co)$
 ^cas-(bridge|server)\.xethub\.hf\.co$
+^[a-z0-9-]+\.aws\.cdn\.hf\.co$
 ^transfer\.xethub\.hf\.co$
 ^zenodo\.org$
 ^archive\.ics\.uci\.edu$
