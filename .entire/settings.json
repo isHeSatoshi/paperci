@@ -1,9 +1,18 @@
 {
   "enabled": true,
   "telemetry": false,
+  "commit_linking": "always",
   "checkpoints": {
     "primary": {
       "type": "git-refs"
+    }
+  },
+  "redaction": {
+    "pii": {
+      "enabled": true,
+      "email": true,
+      "phone": false,
+      "address": false
     }
   }
 }

@@ -166,7 +166,7 @@ def run_due(kind: str) -> None:
 
 def _sub(cmd: list[str], name: str, timeout: int = LIMITS["cycle"]) -> tuple[int, str]:
     log = OPS / f"{name}-{time.strftime('%Y%m%d-%H%M', _local())}.log"
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_END_USER": "autopilot"}
     p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                          errors="replace", env=env, start_new_session=os.name != "nt")
     try:

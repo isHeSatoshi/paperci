@@ -9,6 +9,7 @@ One sandbox run at a time (real model spend). Runs are `python -m paperci review
 crash never takes the server down; the agent's conversation state lives in SQLite."""
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -148,7 +149,9 @@ def _narrate(token: str, line: str, seen: set) -> None:
 
 def _subprocess(job: dict, cmd: list[str], log: Path, narrate: bool, limit: int) -> tuple[int, str]:
     from . import ops
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_LIVE": "1"}
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_LIVE": "1", "PAPERCI_SESSION": f"run:{job['label']}",
+           # neatlogs groups traces per author without ever seeing the address
+           "PAPERCI_END_USER": "author-" + hashlib.sha256((job.get("email") or "").lower().encode()).hexdigest()[:10]}
     seen: set = set()
     with open(log, "a", encoding="utf-8") as f:
         p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
@@ -580,6 +583,8 @@ def index():
 def healthz():
     from . import ops
     ok, info = ops.health()
+    # Reported, not gated on: lost telemetry should be visible but must never take the service down.
+    info["telemetry_problems"] = tracing.delivery_problems()
     return JSONResponse({"ok": ok, "ts": time.time(), **info}, status_code=200 if ok else 503)
 
 

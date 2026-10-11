@@ -17,8 +17,15 @@
 - LLMs via an OpenAI-compatible LiteLLM proxy: Claude Sonnet 4.6 (builder + improver), Claude Haiku 4.5
   (cheap solver), Amazon Nova Pro (claims + verifier, a different family than the builder), Nova Micro (triage).
 - **neatlogs** Python SDK 1.4.26: `neatlogs.wrap(OpenAI(...))` for every LLM call; one WORKFLOW trace per
-  paper; CHAIN/AGENT/TOOL/GUARDRAIL spans per stage; cost and failure class stamped on spans.
+  paper; CHAIN/AGENT/TOOL/GUARDRAIL spans per stage; cost and failure class stamped on spans. Prompt
+  management: every distinct builder system prompt (playbook generation x controller) is a versioned
+  `paperci-builder-system` prompt labelled `gen-N`/variant, and builder traces link to that version, so
+  cost/turns/outcome compare across what the agent learned. Sessions: traces carry `session_id` (one web job,
+  autopilot day or eval batch) and an anonymous `end_user_id` (hashed author email, `autopilot`). SDK delivery
+  diagnostics are surfaced in `/healthz` and logged as an incident when a run drops spans.
 - **Entire** CLI 0.11.4 enabled for Factory Droid; build sessions attached as checkpoints on commits.
+  `commit_linking: always` (the default `prompt` silently skipped linking for non-interactive commits),
+  PII email redaction on, and a local-only rule redacting invite codes before transcripts reach the public repo.
 - **cfo.ai** for the business plan (human step, see HUMAN_TASKS.md; inputs in docs/unit-economics.md).
 - Docker Desktop: hardened sandbox image + tinyproxy egress allowlist on an `--internal` network.
 - Sources: arXiv API + arXiv HTML, Hugging Face Daily Papers API (+ HF paper markdown), GitHub REST API.

@@ -37,6 +37,11 @@ The device login granted read scopes only; `traces update-metadata` and `comment
 `auth login --scope` exists, but the needed scope name (`observability:write`) is only discoverable in the
 bundled OpenAPI. Public trace sharing is read-only in the CLI (`sharing traces get`), so share links need the UI.
 
+## 6. Managed prompts API intermittently returns 503
+2026-10-11 ~19:25 IST: `create_prompt` and `list_prompts` both failed with `GET/POST /api/managed-prompts
+failed (503)` for a few minutes, then worked (`paperci-builder-system` v1 created). PaperCI treats prompt
+registration as best-effort (15 s cap, retried on the next run) so a 503 never blocks a reproduction.
+
 ## What worked well
 `doctor --probe` (all 8 checks pass), `wrap()` on an OpenAI-compatible client with no code changes, GUARDRAIL
 spans with `neatlogs.guardrail.*` attributes, tags for run labels, and CLI readback for automated evidence.

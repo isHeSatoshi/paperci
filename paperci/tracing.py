@@ -1,21 +1,27 @@
 """neatlogs setup. One WORKFLOW root per paper, one CHAIN/AGENT span per stage."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, contextmanager
+from pathlib import Path
 from typing import Any, Iterator
 
 import neatlogs
 from opentelemetry import trace as otel_trace
 
 _initialized = False
+_session: str | None = None
 
 
 def init(run_label: str, variant: str) -> None:
-    global _initialized
+    global _initialized, _session
     if _initialized:
         return
+    # A run label is the natural session: one web job, one autopilot day, one eval batch.
+    _session = os.environ.get("PAPERCI_SESSION") or f"run:{run_label}"
     neatlogs.init(
         api_key=os.environ.get("NEATLOGS_API_KEY"),
         endpoint=os.environ.get("NEATLOGS_ENDPOINT", "https://ingest.neatlogs.com"),
@@ -30,7 +36,62 @@ def init(run_label: str, variant: str) -> None:
 def shutdown() -> None:
     if _initialized:
         neatlogs.flush()
+        bad = delivery_problems()
+        if bad:
+            try:
+                from . import ops
+                ops.event("incident", f"Telemetry delivery problems in this run: {bad}", component="neatlogs")
+            except Exception:
+                pass
         neatlogs.shutdown()
+
+
+def delivery_problems() -> dict:
+    """Non-zero drop/failure counters from the SDK; empty means every span and log was delivered."""
+    try:
+        d = neatlogs.get_delivery_diagnostics()
+    except Exception:
+        return {}
+    return {k: v for k, v in d.items() if isinstance(v, int) and not isinstance(v, bool) and v
+            and any(w in k for w in ("drops", "failures"))}
+
+
+_PROMPT_CACHE = Path(__file__).resolve().parent.parent / "data" / "neatlogs_prompts.json"
+
+
+def register_prompt(name: str, text: str, labels: tuple[str, ...] = (), note: str = "",
+                    config: dict | None = None) -> int | None:
+    """Store `text` as a versioned neatlogs prompt, once per distinct content. Never blocks a run for long
+    or fails it: prompt management is bookkeeping, not a dependency."""
+    if not _initialized or not os.environ.get("NEATLOGS_API_KEY"):
+        return None
+    sha = hashlib.sha256(text.encode()).hexdigest()[:16]
+    try:
+        cache = json.loads(_PROMPT_CACHE.read_text(encoding="utf-8"))
+    except Exception:
+        cache = {}
+    if sha in cache.get(name, {}):
+        return cache[name][sha]
+
+    def create() -> int:
+        h = neatlogs.create_prompt(name=name, prompt=text, labels=list(labels), tags=["paperci"],
+                                   config={**(config or {}), "sha": sha}, commit_message=note or None)
+        return int(h.version)
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        version = ex.submit(create).result(timeout=15)
+    except Exception as e:
+        log("prompt registration skipped: {err}", level="warning", err=f"{type(e).__name__}: {e}"[:200])
+        return None
+    finally:
+        ex.shutdown(wait=False)
+    cache.setdefault(name, {})[sha] = version
+    try:
+        _PROMPT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _PROMPT_CACHE.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+    except Exception:
+        pass
+    return version
 
 
 _root_stack: list[Any] = []
@@ -60,9 +121,16 @@ def _safe(v: Any) -> Any:
 
 
 @contextmanager
-def span(name: str, kind: str = "CHAIN", **attrs: Any) -> Iterator[Any]:
-    """Open a span; attributes are stamped as paperci.<key>."""
-    with neatlogs.trace(name, kind=kind) as s:
+def span(name: str, kind: str = "CHAIN", prompt: dict | None = None, **attrs: Any) -> Iterator[Any]:
+    """Open a span; attributes are stamped as paperci.<key>. `prompt` passes neatlogs prompt-template fields
+    (system_prompt_template, version, ...) so LLM calls inside are linked to a prompt version."""
+    nl: dict = dict(prompt or {})
+    stack = ExitStack()
+    if kind == "WORKFLOW":
+        who = {"session_id": _session, "end_user_id": os.environ.get("PAPERCI_END_USER") or "operator"}
+        nl.update(who)
+        stack.enter_context(neatlogs.identify(**who))
+    with stack, neatlogs.trace(name, kind=kind, **nl) as s:
         if kind == "TOOL":
             s.set_attribute("neatlogs.tool.name", name.split(":", 1)[-1])
         for k, v in attrs.items():

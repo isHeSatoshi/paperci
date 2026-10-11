@@ -253,8 +253,17 @@ class Builder:
     # ---------- main loop ----------
     def run(self) -> dict:
         self.turn = 0
-        with tracing.span("stage:builder", kind="AGENT", arxiv_id=self.arxiv_id, variant=self.variant,
-                          model=MODELS["builder"], playbook_generation=self.recovery.playbook.generation) as span:
+        self.system = self._system_prompt()
+        gen = self.recovery.playbook.generation
+        # One neatlogs prompt version per distinct system prompt (playbook generation x controller), so the
+        # dashboard can compare cost/turns/outcome across what the agent learned.
+        pv = tracing.register_prompt(
+            "paperci-builder-system", self.system, labels=(f"gen-{gen}", self.variant),
+            note=f"playbook generation {gen}, variant {self.variant}",
+            config={"model": MODELS["builder"], "playbook_generation": gen, "variant": self.variant})
+        prompt = {"system_prompt_template": self.system, "version": str(pv)} if pv else None
+        with tracing.span("stage:builder", kind="AGENT", prompt=prompt, arxiv_id=self.arxiv_id, variant=self.variant,
+                          model=MODELS["builder"], playbook_generation=gen, prompt_version=pv or 0) as span:
             image = (self.recovery.playbook.image if self.recovery.enabled else "") or SANDBOX_IMAGE
             if image != SANDBOX_IMAGE and _docker("image", "inspect", image, check=False).returncode != 0:
                 # A learned image only exists where envlearn ran; elsewhere fall back to the base image.
@@ -273,11 +282,7 @@ class Builder:
                 self._finalize(span)
         return self.result
 
-    def _initial_messages(self) -> list[dict]:
-        tree = "\n".join(f"{t['path']} ({t['size']}B)" for t in self.snap["tree"][:220])
-        readme = _redact(self.snap.get("readme", ""), self.sealed_values)[:7000]
-        tg = "\n".join(f"- {t['claim_id']}: {t['metric']}" + (f" | setting: {t['setting']}" if t['setting'] else "")
-                       + (f" | unit: {t['unit_hint']}" if t['unit_hint'] else "") for t in self.targets)
+    def _system_prompt(self) -> str:
         mt = self.ctrl.max_turns if self.ctrl else BUILDER_MAX_TURNS
         sys = SYSTEM.format(run_timeout=RUN_TIMEOUT_SEC, max_turns=mt) + self.recovery.prompt_prior()
         if self.ctrl:
@@ -287,6 +292,14 @@ class Builder:
             if self.ctrl.single_target:
                 sys += ("FOCUS: pick the ONE target metric that is cheapest to regenerate, get it end-to-end, submit. "
                         "One honestly measured metric (even at reduced scale) is a success; do not chase all targets.\n")
+        return sys
+
+    def _initial_messages(self) -> list[dict]:
+        tree = "\n".join(f"{t['path']} ({t['size']}B)" for t in self.snap["tree"][:220])
+        readme = _redact(self.snap.get("readme", ""), self.sealed_values)[:7000]
+        tg = "\n".join(f"- {t['claim_id']}: {t['metric']}" + (f" | setting: {t['setting']}" if t['setting'] else "")
+                       + (f" | unit: {t['unit_hint']}" if t['unit_hint'] else "") for t in self.targets)
+        sys = getattr(self, "system", None) or self._system_prompt()
         user = (f"PAPER: {self.paper['title']} (arXiv {self.arxiv_id})\n"
                 f"ABSTRACT: {_redact(self.paper['abstract'], self.sealed_values)[:1200]}\n\n"
                 f"TARGET METRICS (reproduce as many as feasible; values are sealed and hidden from you):\n{tg}\n\n"
