@@ -59,7 +59,10 @@ SEED_STRATEGIES = [
 ]
 
 POLICY_SYSTEM = """You improve the CONTROL POLICY of an autonomous agent ("builder") that reproduces research
-papers' code in a CPU-only sandbox. The policy is a small Python file whose functions the harness calls every
+papers' code in a CPU-only sandbox (4 CPUs, 6 GB RAM, no GPU). Network facts, do not contradict them in any
+text you write: during setup an allowlist proxy permits PyPI, GitHub, download.pytorch.org, Hugging Face,
+Zenodo, UCI and common dataset mirrors; any other host is refused (that is what egress_denied means); the
+final scripted run has no network at all, so data must be downloaded during setup. The policy is a small Python file whose functions the harness calls every
 turn: system_addendum(state) -> str, milestone(state) -> None | {"key": str, "message": str},
 late_nudge(state) -> None | str. A milestone message is injected as a mandatory instruction (each key fires
 at most once per build). The builder succeeds when it writes /work/paperci_run.sh that recomputes the paper's
