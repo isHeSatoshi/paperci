@@ -138,7 +138,10 @@ def test_daily_cap(monkeypatch=None):
         except ledger.BudgetExceeded as e:
             assert "daily cap" in str(e)
         ledger.precheck("-", "test", 0.01, allow_reserve=True)  # demo/reserve calls are exempt
+        os.environ["PAPERCI_AUTHOR_JOB"] = "1"
+        ledger.precheck("-", "test", 0.01)  # author submissions are not paced by the autopilot's daily cap
     finally:
+        os.environ.pop("PAPERCI_AUTHOR_JOB", None)
         os.environ.pop("PAPERCI_DAILY_CAP")
         os.environ.pop("PAPERCI_CAP_SINCE")
     assert db is not None

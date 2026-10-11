@@ -118,7 +118,8 @@
   a `reproduce.sh` entry point, and a pinned lockfile of the environment that worked. Each is verified by the
   offline reruns and downloadable as `paperci.patch`.
 - Public safety: submissions need an invite code and are rate-limited per IP; a daily LLM cap (`PAPERCI_DAILY_CAP`)
-  sits on top of the per-paper, per-stage and global stops. The board only shows anonymized ids.
+  paces the autopilot on top of the per-paper, per-stage and global stops (author submissions skip the daily
+  pacing but not the web spend cap or the hard stop). The board only shows anonymized ids.
 
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.

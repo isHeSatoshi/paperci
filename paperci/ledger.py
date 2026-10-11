@@ -93,7 +93,9 @@ def precheck(arxiv_id: str, run_label: str, est_cost: float, stage_cap: float | 
     if spent + est_cost > limit:
         raise BudgetExceeded(f"global spend {spent:.3f}+{est_cost:.3f} > limit {limit:.2f}")
     cap = daily_cap()
-    if cap is not None and not allow_reserve:
+    # The daily cap paces the autopilot across days. Author submissions are already gated by invite codes,
+    # a per-IP rate limit, the web spend cap and the hard stop above, so they are not starved by it.
+    if cap is not None and not allow_reserve and os.getenv("PAPERCI_AUTHOR_JOB") != "1":
         t = today_total()
         if t + est_cost > cap:
             raise BudgetExceeded(f"daily spend {t:.3f}+{est_cost:.3f} > daily cap {cap:.2f}")

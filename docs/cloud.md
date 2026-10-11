@@ -50,6 +50,8 @@ or the SCP changing), and a human not reading the uptime email. CloudWatch alarm
 
 - LLM: `PAPERCI_DAILY_CAP` (USD per IST day, counted from deploy time) on top of the existing per-paper,
   per-stage and global hard stops. When the cap is reached the autopilot pauses until midnight and says so on the board.
+  Author submissions are not paced by the daily cap (they count toward it, so the autopilot yields to them); they
+  are bounded by invite codes, 3 submissions per IP per hour, `PAPERCI_WEB_SPEND_CAP` and the global hard stop.
 - AWS: one t3.large (CPU credits in `standard` mode, so no burst charges), 50 GB gp3, no Elastic IP (account limit
   reached; the auto-assigned public IP is stable while the instance runs). About $10.5 for the 5-day window,
   plus about $1.5 for storage and the public IPv4 address.

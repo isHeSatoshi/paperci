@@ -149,7 +149,8 @@ def _narrate(token: str, line: str, seen: set) -> None:
 
 def _subprocess(job: dict, cmd: list[str], log: Path, narrate: bool, limit: int) -> tuple[int, str]:
     from . import ops
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_LIVE": "1", "PAPERCI_SESSION": f"run:{job['label']}",
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_LIVE": "1", "PAPERCI_AUTHOR_JOB": "1",
+           "PAPERCI_SESSION": f"run:{job['label']}",
            # neatlogs groups traces per author without ever seeing the address
            "PAPERCI_END_USER": "author-" + hashlib.sha256((job.get("email") or "").lower().encode()).hexdigest()[:10]}
     seen: set = set()
