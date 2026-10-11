@@ -134,6 +134,17 @@
 - The referee (verifier, sealing, tolerances, ledger, gate, this loop) is hash-pinned per round, together with
   a hash over all sealed claims; a change voids the round. Budget $1.50 per round, one round per night.
 
+### 2026-10-11 (Sun) late night IST: an external eval from real papers, and one model for everything
+- External eval against Hugging Face's ICML 2026 Open Reproductions (`docs/icml-eval.md`): 116 papers where
+  independent community teams agreed (47 verified, 69 falsified) become blind reference cases; PaperCI never
+  sees their verdicts; every disagreement goes to an invite-gated human review page and the decision becomes a
+  gold label. Two runnable verified papers replace the old 2-paper evolution benchmark; a daily golden re-check
+  catches regressions.
+- All roles moved to GLM-5.3-Flash through the Factory API key (no chat-completions endpoint exists, so each
+  call is one locked-down `droid exec`: empty working directory, only TodoWrite, tool calls returned as JSON).
+  Trade-offs, stated on purpose: the builder/verifier model-family split is off, and the Hugging Face judge is
+  also a GLM model, so agreement may be inflated; earlier Claude-based results are not comparable.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).

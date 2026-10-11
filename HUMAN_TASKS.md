@@ -29,6 +29,16 @@ less data/evolve/candidates/<id>/builder_policy.py             # read what it do
 ```
 The canary rolls an approved policy back automatically if live build rates drop afterwards.
 
+## B3. Review ICML eval disagreements (makes gold labels) — as runs finish, ~3 min per paper
+Open https://paperci.vercel.app/icml/review?code=<your invite code>. Each card shows the Hugging Face consensus
+with logbook evidence and links, PaperCI's verdict and measurements, and four buttons. Pick one and add a
+short reason. Judges or friends can do the same with their own invite codes (reviews are stored per code hash).
+Details: `docs/icml-eval.md`.
+
+## B4. Factory API key — after the hackathon
+The key was pasted in chat; it is only stored in `.env` here and on the server (both outside git, Entire
+redacts `fk-` keys). Revoke it at https://app.factory.ai/settings/api-keys when the event is over.
+
 ## C. The cloud server — nothing to do, FYI
 It stops itself on 2026-10-16 23:59 IST. If you want it gone earlier (or after), run
 `python deploy/aws/provision.py down` with AWS credentials, or ask the agent to tear it down. Run
