@@ -53,6 +53,14 @@ The repo is pushed to https://github.com/isHeSatoshi/paperci (public after the f
 2. Create a new plan "PaperCI". Enter the numbers from `docs/unit-economics.md`, section "cfo.ai entry sheet" (COGS ~$0.21 per attempt measured+assumed, 5 attempts per validated task on held-out, pricing hypotheses, $300/month infra, 2 founders). Mark prices as hypotheses.
 3. Export/share the plan (PDF or link) and save it as `docs/cfo-plan.pdf` (or paste the link into hackathon.md, Submission section).
 
+## 4b. Try the product yourself — 5 min (+ a 10-20 min run)
+1. `cd D:\Project\neathack; .venv\Scripts\python.exe -m paperci.web` and open http://127.0.0.1:8000
+2. Submit with your email + an arXiv link or a paper file (PDF / LaTeX .tex or source .zip/.tar.gz / .docx / HTML / MD) + the GitHub repo.
+3. Talk to the agent in the chat (or click "Go ahead with your plan"). Each run spends about $0.15-0.30 of the LLM key;
+   the app refuses new submissions once total spend passes $15 (`PAPERCI_WEB_SPEND_CAP`).
+4. Emails are written to `registry/web/outbox/*.eml` (no mail provider is connected). To make it public you would need
+   hosting + a mail provider; the app binds to localhost only on purpose.
+
 ## 5. Demo video — TODO, ~30 min
 Script and shot list: `docs/demo-script.md`. Record screen + voice, 3-4 minutes. Use the public (anonymized) dashboard `docs/dashboard_public.html` on screen, not the private one, so no verdict about a named paper is published.
 

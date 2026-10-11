@@ -106,7 +106,10 @@ def targets(claims: list[Claim]) -> list[ClaimTarget]:
 
 def extract(arxiv_id: str, run_label: str, paper: dict) -> dict:
     with tracing.span("stage:claims", kind="CHAIN", arxiv_id=arxiv_id) as s:
-        text, src = sources.arxiv_fulltext(arxiv_id)
+        if arxiv_id.startswith("u-"):
+            text, src = sources.upload_text(arxiv_id), "uploaded-pdf"
+        else:
+            text, src = sources.arxiv_fulltext(arxiv_id)
         if not text:
             text, src = paper.get("abstract", ""), "abstract-only"
         focused = _focus(text)

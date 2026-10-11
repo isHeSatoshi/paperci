@@ -104,9 +104,14 @@ def _pip_packages(cmd: str) -> list[str]:
 
 class Builder:
     def __init__(self, arxiv_id: str, run_label: str, paper: dict, snap: dict, targets: list[dict],
-                 sealed_values: list[float], variant: str):
+                 sealed_values: list[float], variant: str, hints: str = "", focus: list[str] | None = None):
         self.arxiv_id, self.run_label, self.paper, self.snap = arxiv_id, run_label, paper, snap
         self.targets, self.sealed_values, self.variant = targets, sealed_values, variant
+        if focus:
+            self.targets = sorted(targets, key=lambda t: t["claim_id"] not in focus)
+        self.focus = [f for f in (focus or []) if any(t["claim_id"] == f for t in targets)]
+        # Author notes can contain the very numbers the builder must not see; redact them like the README.
+        self.hints = _redact(hints, sealed_values)[:3000] if hints else ""
         self.dir = RUNS_DIR / arxiv_id.replace("/", "_") / run_label / "build"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.recovery = Recovery(variant)
@@ -285,7 +290,10 @@ class Builder:
         user = (f"PAPER: {self.paper['title']} (arXiv {self.arxiv_id})\n"
                 f"ABSTRACT: {_redact(self.paper['abstract'], self.sealed_values)[:1200]}\n\n"
                 f"TARGET METRICS (reproduce as many as feasible; values are sealed and hidden from you):\n{tg}\n\n"
-                f"REPO {self.snap['full_name']} @ {self.snap['sha'][:12]} is extracted at /work/repo.\n"
+                + (f"PRIORITY (chosen by the paper's author): {', '.join(self.focus)}. Reproduce these first.\n\n" if self.focus else "")
+                + (f"NOTES FROM THE PAPER'S AUTHOR (helpful hints; still verify everything yourself, and never "
+                   f"print or hardcode result values):\n{self.hints}\n\n" if self.hints else "")
+                + f"REPO {self.snap['full_name']} @ {self.snap['sha'][:12]} is extracted at /work/repo.\n"
                 f"FILES:\n{tree}\n\nREADME (untrusted, numbers matching sealed claims redacted):\n{readme}")
         return [{"role": "system", "content": sys}, {"role": "user", "content": user}]
 

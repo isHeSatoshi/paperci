@@ -81,6 +81,19 @@
   checks, suggestions for authors, reproduce-it-yourself. First live run on a fresh dev paper: 11.9 min, $0.149.
   Built images are now deleted after each run (one was 17 GB), and a run stops if the host disk is under 5 GB.
 - Second held-out batch (5 more papers, v1 and v2) to double the before/after sample.
+- Web app (`python -m paperci.web`): authors submit email + arXiv link or a paper file in any common academic
+  format (PDF, LaTeX .tex / source .zip / .tar.gz, DOCX, HTML, Markdown, text) + repo. A conversational agent
+  (claude-haiku) reads the paper and repo, shows the sealed claims and its plan, asks only plan-changing
+  questions, turns the answer into builder guidance (sealed values redacted), narrates the run, asks again when
+  blocked (data/credentials/entry point), retries up to 3 attempts, writes a summary, and can watch the repo to
+  re-verify on new commits. Emails go to an outbox (no mail provider connected).
+- Tested end to end in the browser: (1) arXiv paper: intake -> author reply -> attempt 1 stuck -> agent asked for the
+  entry point -> attempt 2 -> agent found the data is only on a university drive -> author asked for the write-up ->
+  summary -> watch started. (2) LaTeX source .tar.gz upload: claims extracted from LaTeX, intake, run, agent
+  concluded the package needs CUDA (nvcc) and explained the CPU fallback fix.
+- Bugs found by these runs and fixed: pip's "Cannot connect to proxy ... 403" was classified as proxy outage
+  instead of a refused host; PyTorch's new CDN host `download-r2.pytorch.org` added to the allowlist; the author
+  reply LLM copied a claim value into the builder notes (the builder's redaction caught it, as designed).
 
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.

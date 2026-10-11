@@ -5,8 +5,38 @@ papers' code is never re-run by anyone. **PaperCI reviews a paper the way CI rev
 code. It rebuilds the paper's environment from scratch in a fresh sandbox, re-runs the code, and checks
 **every headline claim in the paper against what the code actually produces.**
 
+### For authors: the web app (an agent you talk to, not a form)
+
+```
+python -m paperci.web        # http://127.0.0.1:8000
+```
+
+1. **Submit**: your email, then an arXiv link or your paper file (PDF, LaTeX `.tex` or source `.zip`/`.tar.gz`,
+   Word `.docx`, HTML, Markdown, text) and the GitHub repo (found automatically if the paper links it).
+2. **The agent reads and talks to you.** It seals your headline claims, inspects the repo, and opens a chat:
+   what it found, its plan, and only the questions that would change the plan (which claim matters most, the
+   command that produces a number, a reachable mirror for data hosted on Drive/Dropbox/a university server).
+   If you don't answer, it starts with its own plan.
+3. **It works and narrates.** Progress, the hosts it connected to (GitHub, PyPI, Hugging Face, ...; blocked ones
+   in red), and plain-language updates ("Cloned your repo...", "I've read enough; switching to running it",
+   "Your code ran end to end with the network off"). Your guidance goes to the engineer agent with any sealed
+   numbers redacted.
+4. **It comes back when it's stuck.** If data isn't released, a credential is needed, or it can't find the
+   entry point, it asks you exactly that (chat + email), then retries with your answer (up to 3 attempts).
+5. **Review + follow-up.** A claim-by-claim review in the page, a badge, a self-contained environment, and
+   an offer to watch your repo and re-verify on every new commit.
+
+![web app](docs/img/web-landing.png)
+![agent conversation: it got stuck, asked the author, retried with the answer, then offered to watch the repo](docs/img/web-chat.png)
+![progress, connections and the watch offer](docs/img/web-job.png)
+
+(Screenshots use the page's `?redact=1` mode, which hides the paper's identity; the real page is private to the author.)
+
+### From the terminal
+
 ```
 python -m paperci review <arxiv-id-or-url>        # whole pipeline, live, ends in a review
+python -m paperci review --file paper.pdf --repo https://github.com/you/code   # any academic file format
 python -m paperci review <arxiv-id> --from-run L  # re-render the review of an earlier run (no spend)
 python -m paperci reviews                         # PR-list style index of every review
 ```

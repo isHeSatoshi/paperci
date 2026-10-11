@@ -38,7 +38,22 @@ def _review(a) -> int:
     import time as _t
     from . import live, review, sources
     from .stages.watcher import split_for
-    aid = sources.parse_arxiv_id(a.paper)
+    if a.pdf:
+        from pathlib import Path as _P
+        pdf_bytes = _P(a.pdf).read_bytes()
+        aid = sources.upload_id(pdf_bytes)
+        if not db.q1("SELECT 1 FROM papers WHERE arxiv_id=?", (aid,)):
+            p = sources.ingest_file(pdf_bytes, a.repo, a.title, filename=_P(a.pdf).name)
+            if not p["repo_url"]:
+                print("no code repository: pass --repo https://github.com/owner/name")
+                return 2
+            p["split"] = "upload"
+            db.upsert_paper(p)
+    elif a.paper:
+        aid = sources.parse_arxiv_id(a.paper)
+    else:
+        print("give an arXiv id/URL or --pdf")
+        return 2
     if a.from_run:
         print(review.render_terminal(review.build_review(aid, a.from_run, a.anonymize)))
         p = review.write(aid, a.from_run, a.anonymize)
@@ -47,7 +62,7 @@ def _review(a) -> int:
             os.startfile(p)  # noqa: S606 - local file the user asked to open
         return 0
     live.enable()
-    live.header(f"PaperCI  ·  reviewing arXiv:{aid}")
+    live.header(f"PaperCI  ·  reviewing {'uploaded paper ' + aid if aid.startswith('u-') else 'arXiv:' + aid}")
     tracing.init(a.label, a.variant)
     try:
         if not db.q1("SELECT 1 FROM papers WHERE arxiv_id=?", (aid,)):
@@ -61,23 +76,38 @@ def _review(a) -> int:
             p["split"] = split_for(aid)
             db.upsert_paper(p)
             live.emit("ok", f"{p['title'][:90]}")
+        if a.repo and sources.find_github(a.repo):
+            db.set_paper(aid, repo_url=sources.find_github(a.repo))
         row = db.q1("SELECT title, repo_url FROM papers WHERE arxiv_id=?", (aid,))
+        if not row["repo_url"]:
+            live.emit("fail", "no public code repository found (pass --repo)")
+            return 2
         live.emit("info", f"{row['title'][:100]}  ·  {row['repo_url']}")
         from .pipeline import prepare, reproduce
         t0 = _t.time()
         prep = prepare(aid)
+        print(f"PREPARED: {json.dumps({'paper_id': aid, **prep})}", flush=True)
+        if a.prepare_only:
+            return 0
         if prep.get("triage") != "accept" or not prep.get("n_claims"):
             live.emit("warn", "stopping: " + ("triage rejected the paper for a CPU sandbox" if prep.get("triage") != "accept"
                                               else "no verifiable numeric claims in the paper text"))
+            p = review.write(aid, a.label, a.anonymize)
+            print(f"\nREVIEW_PATH: {p}", flush=True)
             return 0
         live.header("Reproduce")
-        out = reproduce(aid, a.label, a.variant)
+        hints = open(a.hints_file, encoding="utf-8").read() if a.hints_file else ""
+        focus = [x.strip() for x in a.focus.split(",") if x.strip()] if a.focus else None
+        if hints or focus:
+            live.emit("info", f"using the author's guidance: focus {focus or 'all claims'}"
+                              + (f", {len(hints)} chars of notes (sealed values redacted)" if hints else ""))
+        out = reproduce(aid, a.label, a.variant, hints, focus)
         live.emit("ok", f"pipeline finished in {(_t.time() - t0) / 60:.1f} min, ${out.get('cost_usd', 0):.3f}")
         r = review.build_review(aid, a.label, a.anonymize)
         print(review.render_terminal(r))
         p = review.write(aid, a.label, a.anonymize)
         review.write_index()
-        print(f"\n  review: {p}")
+        print(f"\nREVIEW_PATH: {p}", flush=True)
         if a.open:
             os.startfile(p)  # noqa: S606
     except ledger.BudgetExceeded as ex:
@@ -103,7 +133,12 @@ def main(argv: list[str] | None = None) -> int:
     cy.add_argument("--prepare", type=int, default=20); cy.add_argument("--reproduce", type=int, default=1)
     cy.add_argument("--split", default=None); cy.add_argument("--label", default=None)
     rv = sub.add_parser("review", help="CodeRabbit-style review of one paper: run the pipeline live, write the review")
-    rv.add_argument("paper", help="arXiv id or URL"); rv.add_argument("--repo", help="override the code repository URL")
+    rv.add_argument("paper", nargs="?", help="arXiv id or URL"); rv.add_argument("--repo", help="override the code repository URL")
+    rv.add_argument("--pdf", "--file", dest="pdf", help="review an unpublished paper from a local file: PDF, LaTeX "
+                    "(.tex or .zip/.tar.gz source), DOCX, HTML, Markdown or text (needs --repo unless the paper links it)")
+    rv.add_argument("--title"); rv.add_argument("--prepare-only", action="store_true")
+    rv.add_argument("--hints-file", help="author notes passed to the builder (redacted against sealed values)")
+    rv.add_argument("--focus", help="comma-separated claim ids the author wants verified first")
     rv.add_argument("--label", default="review"); rv.add_argument("--variant", default=BUILDER_VARIANT)
     rv.add_argument("--from-run", help="only render the review of an existing run label (no new spend)")
     rv.add_argument("--anonymize", action="store_true"); rv.add_argument("--open", action="store_true")

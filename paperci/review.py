@@ -175,7 +175,10 @@ def build_review(aid: str, label: str, anonymize: bool = False) -> dict:
         checks.append(("ok", "Trainability", f"cheap solver ({MODELS['solver']}): {trn['label']} "
                        f"({sum(a['reward'] >= 0.999 for a in trn['attempts'])}/{len(trn['attempts'])} solved)"))
     if tri.get("decision") == "reject":
-        checks.append(("na", "Triage", "Skipped: " + "; ".join(tri.get("rule_reasons") or ["not CPU-feasible"])))
+        checks.insert(0, ("bad", "Triage", "Not runnable in a CPU sandbox: " + "; ".join(
+            tri.get("rule_reasons") or [((tri.get("llm") or {}).get("reason") or "not CPU-feasible")[:200]])))
+    if tri.get("decision") == "accept" and not cl.get("n_claims"):
+        checks.append(("bad", "Claims", "No headline number in the paper text could be grounded in a verbatim quote"))
 
     # ---- actionable suggestions for authors
     sugg = []
@@ -233,6 +236,10 @@ def build_review(aid: str, label: str, anonymize: bool = False) -> dict:
         else:
             headline = f"Could not reproduce in a CPU sandbox ({build.get('status')})"
         state = "bad"
+    elif tri.get("decision") == "reject":
+        headline, state = "Not runnable in a CPU sandbox today (triage)", "bad"
+    elif tri.get("decision") == "accept" and not cl.get("n_claims"):
+        headline, state = "No verifiable numeric claims found in the paper text", "warn"
     else:
         headline, state = "Not attempted", "na"
 
@@ -382,7 +389,12 @@ def render_html(r: dict) -> str:
     sugg = "".join(f"<div class=sg><b>{i}. {e(t)}</b>{_md_inline(b)}</div>" for i, (t, b) in enumerate(r["suggestions"], 1))
     repo = (f'<a href="https://github.com/{e(r["repo"])}/tree/{e(r["sha"] or "")}">{e(r["repo"])}</a> @ '
             f'<span class=mono>{e((r["sha"] or "")[:10])}</span>') if r["repo"] else "repository hidden"
-    arx = f'<a href="https://arxiv.org/abs/{e(r["arxiv_id"])}">arXiv:{e(r["arxiv_id"])}</a>' if r["arxiv_id"] else e(r["who"])
+    if r["arxiv_id"] and r["arxiv_id"].startswith("u-"):
+        arx = "uploaded PDF (private)"
+    elif r["arxiv_id"]:
+        arx = f'<a href="https://arxiv.org/abs/{e(r["arxiv_id"])}">arXiv:{e(r["arxiv_id"])}</a>'
+    else:
+        arx = e(r["who"])
     b = r["build"]
     steps = "".join(f"<div class='stp {s}'><span class=i>{ICON[s]}</span>{e(lab)}"
                     f"<span class=q>{(f'{t / 60:.1f}m' if t >= 60 else f'{t:.0f}s') if t else ''}</span></div>"

@@ -1,6 +1,6 @@
 ^pypi\.org$
 ^files\.pythonhosted\.org$
-^download\.pytorch\.org$
+^download(-r2)?\.pytorch\.org$
 ^github\.com$
 ^api\.github\.com$
 ^(www|api)\.openml\.org$

@@ -130,7 +130,7 @@ def prepare(arxiv_id: str) -> dict:
         return out
 
 
-def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
+def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: list[str] | None = None) -> dict:
     """Back half: build -> verify -> robustness -> verdict -> package -> oracle -> trainability."""
     paper = paper_row(arxiv_id)
     snapshot = _load(arxiv_id, "snapshot", SHARED)
@@ -150,7 +150,7 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
         sealed_sha = db.q1("SELECT sha256 FROM sealed_claims WHERE arxiv_id=?", (arxiv_id,))["sha256"]
 
         build = _run_stage(arxiv_id, "build", label, lambda: Builder(
-            arxiv_id, label, paper, snapshot, cl["targets"], sealed_values, variant).run(), tid)
+            arxiv_id, label, paper, snapshot, cl["targets"], sealed_values, variant, hints, focus).run(), tid)
 
         def verify():
             if build.get("status") != "built":

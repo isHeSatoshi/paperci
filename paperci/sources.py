@@ -64,6 +64,121 @@ def arxiv_search(query: str, max_results: int = 50, start: int = 0) -> list[dict
     return out
 
 
+UPLOAD_DIR = __import__("pathlib").Path(__file__).resolve().parent.parent / "data" / "uploads"
+
+
+def upload_id(pdf_bytes: bytes) -> str:
+    import hashlib
+    return "u-" + hashlib.sha256(pdf_bytes).hexdigest()[:10]
+
+
+PAPER_FORMATS = ".pdf .tex .zip .tar .tar.gz .tgz .docx .md .txt .html .htm"
+
+
+def _latex_to_text(tex: str) -> tuple[str, str]:
+    """Readable text from LaTeX source (enough for claim extraction; numbers and prose survive)."""
+    m = re.search(r"\\title\s*(?:\[[^\]]*\])?\s*\{((?:[^{}]|\{[^{}]*\})*)\}", tex)
+    title = re.sub(r"\\[a-zA-Z]+\*?|[{}]", " ", m.group(1)) if m else ""
+    t = re.sub(r"(?<!\\)%.*", "", tex)
+    t = re.sub(r"\\begin\{(figure|tikzpicture|algorithm)\*?\}.*?\\end\{\1\*?\}", " ", t, flags=re.S)
+    t = re.sub(r"\\(cite|ref|label|eqref|citep|citet|url|includegraphics)\*?(\[[^\]]*\])?\{[^}]*\}", " ", t)
+    t = re.sub(r"\\(section|subsection|subsubsection|paragraph|caption|textbf|textit|emph|mathrm|text)\*?\{", "\n", t)
+    t = re.sub(r"&", " | ", t)
+    t = re.sub(r"\\\\", "\n", t)
+    t = re.sub(r"\\[a-zA-Z@]+\*?", " ", t)
+    t = re.sub(r"[{}$~^_]", " ", t)
+    t = re.sub(r"\\%", "%", t)
+    return re.sub(r"[ \t]+", " ", re.sub(r"\n\s*\n+", "\n", t)).strip(), " ".join(title.split())
+
+
+def _latex_bundle(files: dict[str, str]) -> str:
+    """arXiv-style source bundle: start at the file with \\documentclass and inline \\input/\\include."""
+    main = next((n for n, s in files.items() if "\\documentclass" in s), None) or max(files, key=lambda n: len(files[n]))
+    seen = set()
+
+    def expand(name: str, depth: int = 0) -> str:
+        if depth > 6 or name in seen:
+            return ""
+        seen.add(name)
+        src = files.get(name) or files.get(name + ".tex") or ""
+        return re.sub(r"\\(?:input|include)\{([^}]+)\}",
+                      lambda m: expand(m.group(1).strip().removeprefix("./"), depth + 1), src)
+    return expand(main)
+
+
+def paper_text(data: bytes, filename: str) -> tuple[str, str, str]:
+    """(text, title_hint, format) for an uploaded paper in any common academic format. Parsing only;
+    nothing inside the upload is executed."""
+    import io
+    import tarfile
+    import zipfile
+    name = (filename or "").lower()
+    if data[:4] == b"%PDF" or name.endswith(".pdf"):
+        from pypdf import PdfReader
+        r = PdfReader(io.BytesIO(data))
+        t = (r.metadata.title if r.metadata and r.metadata.title else "") or ""
+        return "\n".join((p.extract_text() or "") for p in r.pages[:60]), t, "pdf"
+    if name.endswith(".docx"):
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "replace")
+        xml = re.sub(r"</w:p>", "\n", xml)
+        return html.unescape(re.sub(r"<[^>]+>", "", xml)), "", "docx"
+    if name.endswith(".zip") or data[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            files = {i.filename.removeprefix("./"): z.read(i).decode("utf-8", "replace") for i in z.infolist()
+                     if i.filename.endswith(".tex") and i.file_size < 3_000_000}
+        if not files:
+            raise ValueError("the archive contains no .tex files")
+        text, title = _latex_to_text(_latex_bundle(files))
+        return text, title, "latex-zip"
+    if name.endswith((".tar", ".tar.gz", ".tgz")) or data[:2] == b"\x1f\x8b":
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf:
+            files = {}
+            for m in tf.getmembers():
+                if m.isfile() and m.name.endswith(".tex") and m.size < 3_000_000:
+                    f = tf.extractfile(m)  # read into memory only; nothing is written to disk
+                    files[m.name.removeprefix("./")] = f.read().decode("utf-8", "replace") if f else ""
+        if not files:
+            raise ValueError("the archive contains no .tex files")
+        text, title = _latex_to_text(_latex_bundle(files))
+        return text, title, "latex-tar"
+    s = data.decode("utf-8", "replace")
+    if name.endswith(".tex") or "\\documentclass" in s or "\\begin{document}" in s:
+        text, title = _latex_to_text(s)
+        return text, title, "latex"
+    if name.endswith((".html", ".htm")) or s.lstrip().lower().startswith(("<!doctype", "<html")):
+        m = re.search(r"(?is)<title>(.*?)</title>", s)
+        return _strip_html(s), (html.unescape(m.group(1)).strip() if m else ""), "html"
+    m = re.search(r"(?m)^#\s+(.+)$", s)
+    return s, (m.group(1).strip() if m else ""), "markdown" if name.endswith(".md") else "text"
+
+
+def ingest_pdf(pdf_bytes: bytes, repo_url: str | None = None, title: str | None = None,
+               filename: str = "paper.pdf") -> dict:
+    """An unpublished paper uploaded by its authors (any format in PAPER_FORMATS): text is extracted on the
+    host and kept locally; claims are extracted from it exactly as for arXiv papers."""
+    text, meta_title, fmt = paper_text(pdf_bytes, filename)
+    if len(text) < 2000:
+        raise ValueError(f"could not extract enough text from this {fmt} file")
+    pid = upload_id(pdf_bytes)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    (UPLOAD_DIR / f"{pid}.txt").write_text(text, encoding="utf-8")
+    first = next((l.strip() for l in text.splitlines() if len(l.strip()) > 12), "Untitled paper")
+    m = re.search(r"(?is)\babstract\b[\s.:—-]*(.{200,1800}?)(?:\n\s*\n|\b1\.?\s+Introduction\b|\bIntroduction\b)", text)
+    return {"arxiv_id": pid, "title": (title or meta_title or first)[:300],
+            "abstract": " ".join((m.group(1) if m else text[:1500]).split()), "comment": "",
+            "categories": ["upload"], "published": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "repo_url": find_github(repo_url or "") or find_github(text)}
+
+
+ingest_file = ingest_pdf
+
+
+def upload_text(pid: str) -> str:
+    p = UPLOAD_DIR / f"{pid}.txt"
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
 def parse_arxiv_id(s: str) -> str:
     m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", s)
     if not m:

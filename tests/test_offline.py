@@ -83,6 +83,26 @@ def test_claims_and_classifier():
     assert classify("raise FileNotFoundError(path)", 0, "cat /work/repo/a.py") is None
     assert classify("curl: (56) CONNECT tunnel failed, response 403\nTunnel connection failed: 403 Filtered", 1) == "egress_denied"
     assert classify("curl: (5) Could not resolve proxy: paperci-egress", 5) == "proxy_unreachable"
+    assert classify("ProxyError('Cannot connect to proxy.', OSError('Tunnel connection failed: 403 Filtered'))", 1) == "egress_denied"
+
+
+def test_paper_formats():
+    import io
+    import zipfile
+    from paperci.sources import paper_text
+    main = r"\documentclass{article}\title{Fast \textbf{Things}}\begin{document}\input{sec/results}\end{document}"
+    sec = r"\section{Results} Our method reaches 91.37\% test accuracy (Table~\ref{t:1}). % hidden comment"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("main.tex", main)
+        z.writestr("sec/results.tex", sec)
+    text, title, fmt = paper_text(buf.getvalue(), "source.zip")
+    assert fmt == "latex-zip" and "91.37%" in text and "hidden comment" not in text and title == "Fast Things", (fmt, title, text)
+    d = io.BytesIO()
+    with zipfile.ZipFile(d, "w") as z:
+        z.writestr("word/document.xml", "<w:document><w:p><w:r><w:t>Accuracy is 88.1%</w:t></w:r></w:p></w:document>")
+    assert "Accuracy is 88.1%" in paper_text(d.getvalue(), "paper.docx")[0]
+    assert paper_text(b"<html><title>T</title><body><p>RMSE 0.23</p></body></html>", "p.html")[1] == "T"
 
 
 if __name__ == "__main__":

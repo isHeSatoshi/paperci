@@ -1,56 +1,52 @@
 # Demo script (3:30) and shot list: "CodeRabbit for research papers"
 
-Record at 1080p. On screen, use only anonymized pages (`--anonymize` reviews, `registry/reviews/index-public.html`,
-`docs/dashboard_public.html`, `docs/img/*`): no verdict next to a named paper. Numbers are from
-`docs/evidence.md` (measured only).
+The product is the web app (`python -m paperci.web`, http://127.0.0.1:8000). Record at 1080p. Use your own
+email; pick a paper you are comfortable showing (a verdict about a named paper appears on screen, so prefer
+a paper you co-authored or one whose review is positive, or blur the title). Fallback stills are in `docs/img/`.
 
-Prep (before recording): pick a fresh dev paper with `python scripts\show_queue.py dev review 5`, then
-`python -m paperci review <id> --anonymize --open` (~12 min, ~$0.15). Record the terminal while it runs and
-speed it up 8x in editing. Keep `docs/img/terminal.png` as a fallback.
+Prep: start the web app; have one finished conversation open in a tab (shows the review + "watch my repo"),
+and submit a fresh one at the start of recording. A run takes 10-20 minutes; speed it up in editing.
 
 ## 0:00-0:20 Hook
-- Shot: a GitHub PR with a CodeRabbit comment. Cut to an arXiv listing.
-- VO: "Every pull request gets a bot that runs the tests and reviews the change. Research papers get nothing.
-  Most papers' code is never re-run by anyone. PaperCI is CodeRabbit for papers."
+- Shot: a GitHub PR with a CodeRabbit comment. Cut to the PaperCI landing page.
+- VO: "Every pull request gets a bot that runs the tests and reviews the change. Papers get nothing; most
+  papers' code is never re-run. PaperCI is CodeRabbit for papers, and it's an agent you talk to."
 
-## 0:20-1:05 One command, live (terminal, sped up)
-- Shot: `python -m paperci review <arxiv-id>`; the CI-style stream: triage, claims sealed (sha256), builder turns,
-  the **learned controller firing** ("stop reading, run code"), the offline dry run, three reruns with
-  `--network none`, the oracle replay.
-- VO: "It doesn't lint the code. It reads the paper, seals every headline number so the agent never sees
-  them, rebuilds the environment from scratch in a locked sandbox, and gets the code running. Then a
-  different model family reruns it three times with the network off and checks each claim."
+## 0:20-0:45 Submit
+- Shot: type email, switch to "Upload a file", drop a LaTeX source `.tar.gz` (or a PDF), paste the repo, tick
+  consent, "Start verification". Redirects to the private conversation page.
+- VO: "Any academic format: PDF, LaTeX source, Word, HTML. Plus the code."
 
-## 1:05-1:50 The review (browser, anonymized review page)
-- Shot: scroll the review: pipeline strip, walkthrough, **claims vs measured** (paper value, measured mean ± sd,
-  tolerance, status), checks, **suggestions for the authors**, "reproduce it yourself", the badge.
-- VO: "This is the PR comment for a paper: claim by claim, what the paper says and what the code actually
-  produced. Honest labels: reproduced, reproduced at reduced scale, differs, not measured. And concrete fixes
-  for the authors: missing dependencies, data that isn't released, numbers no script prints."
+## 0:45-1:30 The agent talks to you
+- Shot: the agent's first message: the claims it found with the paper's values, what it saw in the repo, its
+  plan, and 1-3 questions (which claim matters, the command that produces a number, a reachable data mirror).
+- Shot: type a reply ("c2 matters most; use train.py darcy"). The agent confirms what it will do.
+- VO: "It reads the paper and the repo, seals every headline number so the engineer agent never sees them,
+  and asks only what would change its plan. Your answer goes to the engineer with any numbers redacted."
 
-## 1:50-2:20 It catches cheating, including its own agent's
-- Shot: `docs/img/review-caught.png`: red "Computed, not replayed" check, every claim "Run not trusted".
-- VO: "When I audited my own wins, the agent had found shortcuts: replaying stored results, or computing the
-  metric with its own formula instead of the paper's code. The judge now catches both, and every run was
-  re-judged. A review you can't trust is worse than none."
+## 1:30-2:15 It works, narrates, connects
+- Shot: right panel: progress steps ticking, Connections chips (GitHub, PyPI, PyTorch wheels; a red blocked
+  host), the chat narrating: "Cloned your repo...", "I've read enough; switching to running it", "Your code
+  ran end to end with the network switched off", "reran it in fresh containers: exit codes [0, 0, 0]".
+- VO: "A fresh locked-down container, only an allowlist of code and data hosts, and a policy it learned from
+  earlier papers: stop reading, start running."
 
-## 2:20-2:55 It improves itself (held-out numbers)
-- Shot: `docs/evidence.md` section 1 table (or dashboard Runs rows). Read: on 10 held-out papers it never tuned on,
-  built 3 -> 5, faithful reproductions 1 -> 2, validated tasks 0 -> 2, turns 16.5 -> 11.8, cost per paper
-  $0.24 -> $0.18.
-- Shot: neatlogs trace pair, same paper: BEFORE `294209f0b2d1b60bfc1509fdbece2f1b` (19 LLM calls, 274k tokens)
-  vs AFTER `4e85d604ac7a5d343950ee923f573502` (13 LLM calls, 142k tokens).
-- VO: "It learns from its own neatlogs traces: rules, an enforced control policy, a better base image. Every
-  change is gated; the judge, the sealed claims and the held-out papers are frozen."
+## 2:15-2:45 It comes back when it's stuck
+- Shot: the agent's question after a blocked attempt ("I couldn't get your code to produce the numbers within
+  my step budget... which command produces your headline number?"), the outbox email, the reply, "Starting
+  attempt 2 with what you told me."
+- VO: "When it hits something only you can fix, it asks, by chat and email, and retries with your answer."
 
-## 2:55-3:10 It heals itself
-- Shot: chaos run: proxy killed -> "Could not resolve proxy" -> self-heal restarts it -> retry ok
-  (`runs/logs/dev-chaos2.log` or the evidence section 4 lines).
-- VO: "Kill its network mid-run and it repairs itself and keeps going."
+## 2:45-3:10 The review
+- Shot: the embedded review: pipeline strip, claims vs measured with honest statuses, checks (anti-cheat),
+  suggestions for the authors, reproduce-it-yourself, badge. Then "Yes, watch my repo".
+- Shot (still): `docs/img/review-caught.png`, "Computed, not replayed" failed: the judge caught a shortcut.
+- VO: "Claim by claim: what the paper says, what the code produced. It catches shortcuts, including its own
+  agent's. And it keeps watching: every new commit gets re-verified."
 
-## 3:10-3:30 Why it matters + sponsors
-- Shot: `registry/reviews/index-public.html` (PR-list of reviews) and a Harbor task folder.
-- VO: "Every reproduction becomes a verified, executable task, so fresh papers become fresh benchmarks. Today
-  that's deterministic code on a CPU; next is GPUs and simulators: robotics, physics, chemistry, where
-  verifying results is the bottleneck. Built with neatlogs tracing every call, Entire checkpoints on every
-  commit, and a cfo.ai plan at about 20 cents per attempt."
+## 3:10-3:30 Proof + sponsors
+- Shot: `docs/evidence.md` held-out table: on 10 papers it never tuned on, built 3 -> 5, faithful reproductions
+  1 -> 2, validated tasks 0 -> 2, cost per paper $0.24 -> $0.18. neatlogs trace pair (BEFORE
+  `294209f0b2d1b60bfc1509fdbece2f1b`, AFTER `4e85d604ac7a5d343950ee923f573502`). Entire checkpoint page.
+- VO: "It improves itself from its neatlogs traces, every session is an Entire checkpoint, and at about
+  20 cents an attempt the cfo.ai plan works. Today deterministic code on a CPU; next, GPUs and simulators."
