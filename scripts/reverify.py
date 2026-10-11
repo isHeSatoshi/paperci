@@ -1,6 +1,7 @@
 """Re-run the (fixed, frozen) verifier on stored offline-run artifacts for every run label, so all
 runs are judged by identical rules. No sandbox runs; LLM extraction only for ambiguous logs.
-Packages whose verdict now carries integrity flags are invalidated.   python scripts/reverify.py"""
+Packages whose verdict now carries integrity flags are invalidated.
+    python scripts/reverify.py [label-prefix ...]     (default: every label)"""
 import json
 import shutil
 import sys
@@ -16,8 +17,11 @@ from paperci.stages import tasks, verifier  # noqa: E402
 
 tracing.init("reverify", "-")
 try:
+    only = sys.argv[1:]
     for row in db.q("SELECT arxiv_id, run_label FROM stages WHERE stage='robustness' AND status='done'"):
         aid, label = row["arxiv_id"], row["run_label"]
+        if only and not any(label.startswith(p) for p in only):
+            continue
         build = _load(aid, "build", label)
         rob = _load(aid, "robustness", label)
         snap = _load(aid, "snapshot", "shared")

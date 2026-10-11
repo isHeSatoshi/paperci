@@ -251,6 +251,25 @@ def step() -> dict:
     return {"status": "ran", "arxiv": item["arxiv"]}
 
 
+def refresh() -> dict:
+    """Reload finished runs from the database, e.g. after scripts/reverify.py re-judged them with fixed rules."""
+    st = _load(STATE, {"runs": []})
+    changed = 0
+    for r in st["runs"]:
+        if r["status"] == "done" and r.get("label"):
+            res = ours(r["arxiv"], r["label"])
+            if res and res != r.get("result"):
+                r["result"] = res
+                changed += 1
+                try:
+                    from . import review
+                    r["review"] = str(review.write(r["arxiv"], r["label"]))
+                except Exception:
+                    pass
+    _save(STATE, st)
+    return {"changed": changed}
+
+
 def release() -> None:
     """A run interrupted for an author is redone later and does not count as an attempt."""
     st = _load(STATE, {"runs": []})
@@ -377,7 +396,7 @@ def main(argv: list[str]) -> int:
         os.environ["PAPERCI_BUDGETED_JOB"] = "1"
         fn = {"fetch": fetch, "screen": lambda: screen(int(argv[1]) if len(argv) > 1 else 40),
               "queue": lambda: queue(int(argv[1]) if len(argv) > 1 else 10), "step": step, "score": score,
-              "status": status, "golden": golden_enqueue, "golden-step": golden_step}[cmd]
+              "status": status, "golden": golden_enqueue, "golden-step": golden_step, "refresh": refresh}[cmd]
         print(json.dumps(fn(), indent=1, default=str))
     finally:
         tracing.shutdown()

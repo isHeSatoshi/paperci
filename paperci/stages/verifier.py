@@ -104,6 +104,19 @@ def code_path_used(script: str, tree: list[dict]) -> bool:
     return False
 
 
+def with_drivers(script: str, build_dir: Path) -> str:
+    """The run script plus the builder-written files it invokes (e.g. `python /work/driver.py`), so a driver
+    that imports the repo's package counts as running the repo's code."""
+    try:
+        writes = json.loads((build_dir / "writes.json").read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return script
+    latest = {w.get("path"): w.get("content") or "" for w in writes if isinstance(w, dict) and w.get("path")}
+    extra = [body for path, body in latest.items()
+             if not path.endswith("paperci_run.sh") and re.search(rf"(?:^|[\s/'\"]){re.escape(path.split('/')[-1])}\b", script)]
+    return script + "\n" + "\n".join(extra)
+
+
 def integrity(build_dir: Path, claims: list[Claim], runs: list[dict], egress: dict, tree: list[dict] | None = None) -> dict:
     """Hardcoded numbers, prebuilt results, replay of precomputed results, no repo code path, egress."""
     authored = ""
@@ -145,7 +158,7 @@ def integrity(build_dir: Path, claims: list[Claim], runs: list[dict], egress: di
         replay_reason = f"run finished in {fastest}s while loading result-like artifacts"
     if replay_reason:
         flags.append("precomputed_results_replay")
-    used = code_path_used(script, tree) if tree is not None and script else True
+    used = code_path_used(with_drivers(script, build_dir), tree) if tree is not None and script else True
     if not used:
         flags.append("no_repo_code_path")
     return {"flags": flags, "hardcoded": hard, "copied_files": copied[:20], "replay_reason": replay_reason,

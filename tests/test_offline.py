@@ -67,6 +67,14 @@ def test_integrity(tmp=Path(__file__).parent / "_tmp_build"):
     r = integrity(tmp, [c], [{"copied_from_repo": ["./results/final.json"]}], {"denied": {"evil.com": 2}})
     assert "hardcoded_claim_value" in r["flags"] and "prebuilt_result_files" in r["flags"], r
     assert r["hardcoded"][0]["literal"] == "[sealed value]"  # never echo the sealed number
+    # A builder-written driver that imports the repo's package is the repo's code path; one that does not, is not.
+    import json as _json
+    tree = [{"path": "mech_design/__init__.py"}, {"path": "mech_design/mechanism.py"}]
+    (tmp / "paperci_run.sh").write_text("cd /work/repo\npython /work/settingA.py\n")
+    for body, want in (("import mech_design.mechanism as m\nm.Mechanism().fit()\n", True), ("print(0.5)\n", False)):
+        (tmp / "writes.json").write_text(_json.dumps([{"path": "/work/settingA.py", "content": body}]))
+        r = integrity(tmp, [], [], {}, tree=tree)
+        assert r["repo_code_path_used"] is want, (body, r)
     for f in tmp.iterdir():
         f.unlink()
     tmp.rmdir()
