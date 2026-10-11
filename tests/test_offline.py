@@ -36,6 +36,15 @@ def test_extraction():
     assert sj["type"] == "json" and _apply_spec(sj, arts) == 0.231, sj
     cov = candidates("coverage", arts)
     assert cov and cov[-1]["value"] == 0.9612
+    # evidence quoted as one flattened line must still match the two-line log it came from
+    ml = {"run.log": "--- c2: success rate agent B ---\n  robot_1: stalled=22.7% exitos=76/100\n"}
+    flat = {"file": "run.log", "evidence": "--- c2: success rate agent B --- robot_1: stalled=22.7% exitos=76/100"}
+    sm = extraction_spec("c2", flat, 76.0)
+    assert sm and _apply_spec(sm, ml) == 76.0, sm
+    assert _apply_spec(sm, {"run.log": ml["run.log"].replace("76/100", "73/100")}) == 73.0
+    hdr = candidates("success rate", {"run.log": "--- c2: success rate agent B (slot 1), 6000 steps ---\n  robot_1: ok=76/100\n"}, "c2")
+    assert hdr and hdr[0]["header"] and hdr[0]["after"] == ["robot_1: ok=76/100"], hdr
+    assert not candidates("success rate", {"run.log": "success rate over 6000 steps"})
 
 
 def test_verdicts():
@@ -73,6 +82,7 @@ def test_claims_and_classifier():
     assert classify("Traceback (most recent call last):\nModuleNotFoundError: No module named 'x'", 0, "python a.py | tail") == "missing_module"
     assert classify("raise FileNotFoundError(path)", 0, "cat /work/repo/a.py") is None
     assert classify("curl: (56) CONNECT tunnel failed, response 403\nTunnel connection failed: 403 Filtered", 1) == "egress_denied"
+    assert classify("curl: (5) Could not resolve proxy: paperci-egress", 5) == "proxy_unreachable"
 
 
 if __name__ == "__main__":

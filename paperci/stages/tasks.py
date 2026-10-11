@@ -13,7 +13,7 @@ from pathlib import Path
 from .. import ledger, llm, tracing
 from ..config import (MODELS, REGISTRY_DIR, ROOT, RUN_TIMEOUT_SEC, RUNS_DIR, SANDBOX_IMAGE,
                       SOLVER_ATTEMPT_CAP_USD, SOLVER_MAX_TURNS)
-from ..sandbox import Sandbox
+from ..sandbox import Sandbox, SandboxError
 from .verifier import NUM, _decimals
 
 READ_ONLY = re.compile(r"^\s*(ls|cat|head|tail|grep|rg|find|wc|tree|pwd|echo|du|file|which|nproc|free|env|"
@@ -21,6 +21,9 @@ READ_ONLY = re.compile(r"^\s*(ls|cat|head|tail|grep|rg|find|wc|tree|pwd|echo|du|
 ALLOWED_HOSTS = [l.strip().strip("^$").replace("\\.", ".") for l in
                  (ROOT / "sandbox" / "proxy" / "allowlist").read_text().splitlines()
                  if l.strip() and "(" not in l and "*" not in l]
+
+
+INFRA_EXIT_CODES = {125, 135, 255}  # docker run error, SIGBUS, docker exec lost the container
 
 
 def slug(s: str) -> str:
@@ -46,10 +49,19 @@ def extraction_spec(claim_id: str, ext: dict, raw_value: float) -> dict | None:
             except ValueError:
                 pass
         else:
-            rx += re.escape(p)
+            # Evidence quoted by the extractor is often several log lines flattened into one, so
+            # whitespace must match newlines/indentation or reruns and the oracle never match.
+            rx += r"\s+".join(re.escape(w) for w in re.split(r"\s+", p))
     if idx is None:
         return None
     return {"claim_id": claim_id, "type": "regex", "file": f or "run.log", "regex": rx, "group": idx}
+
+
+def apply_regex(spec: dict, text: str) -> float | None:
+    last = None
+    for m in re.finditer(spec["regex"], text):
+        last = float(m.group(spec["group"]))
+    return last
 
 
 EXTRACT_PY = '''import json, os, re, sys
@@ -67,10 +79,8 @@ for s in spec:
             out[s["claim_id"]] = float(d)
     else:
         last = None
-        for line in open(p, errors="replace"):
-            m = re.search(s["regex"], line.strip())
-            if m:
-                last = float(m.group(s["group"]))
+        for m in re.finditer(s["regex"], open(p, errors="replace").read()):
+            last = float(m.group(s["group"]))
         if last is not None:
             out[s["claim_id"]] = last
 os.makedirs("/work/output", exist_ok=True)
@@ -143,6 +153,17 @@ def package(arxiv_id: str, run_label: str, paper: dict, snap: dict, build: dict,
             per_claim: dict, verdict: str, confidence: str, trace_id: str | None, sealed_sha: str) -> dict | None:
     """Writes registry/tasks/<id>/ for every claim with a measured value."""
     measured = {cid: v for cid, v in per_claim.items() if v.get("comparison") and v.get("raw_values")}
+    # Two claims read from the same numbers means the setting attribution is a guess; keep only claims
+    # whose evidence line is explicitly tagged with their own id.
+    by_vals: dict[tuple, list[str]] = {}
+    for cid, v in measured.items():
+        by_vals.setdefault(tuple(v["raw_values"]), []).append(cid)
+    for cids in by_vals.values():
+        if len(cids) > 1:
+            for cid in cids:
+                ev = measured[cid]["extraction"].get("evidence", "")
+                if not re.match(rf"\W*{re.escape(cid)}\b", ev, re.I):
+                    measured.pop(cid)
     if not measured:
         return None
     with tracing.span("stage:packager", kind="CHAIN", arxiv_id=arxiv_id, claims=len(measured)) as s:
@@ -232,6 +253,10 @@ def package(arxiv_id: str, run_label: str, paper: dict, snap: dict, build: dict,
         meta = {"task_id": tid, "arxiv_id": arxiv_id, "run_label": run_label, "verdict": verdict,
                 "confidence": confidence, "neatlogs_trace_id": trace_id, "sealed_claims_sha256": sealed_sha,
                 "scale": build.get("scale"), "claims": list(ref), "extract_spec_ok": len(spec) == len(ref),
+                # References that depend on data the builder invented cannot be matched from the
+                # instruction alone; such tasks are flagged instead of being sold as fair tasks.
+                "spec_risk": "high" if re.search(r"synthetic|generated|random(ly)? (data|sample)|simulat",
+                                                  build.get("scale_notes", ""), re.I) else "normal",
                 "created_at": time.time()}
         (d / "paperci.json").write_text(json.dumps(meta, indent=1), encoding="utf-8", newline="\n")
         tracing.set_attr(s, "task_id", tid)
@@ -239,6 +264,17 @@ def package(arxiv_id: str, run_label: str, paper: dict, snap: dict, build: dict,
 
 
 # ---------------- task environment runner ----------------
+def reject(task_dir: Path, reason: str) -> Path:
+    """Move a package out of the registry; a task whose own oracle fails is not a task."""
+    dest = REGISTRY_DIR / "rejected" / task_dir.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.move(str(task_dir), str(dest))
+    (dest / "REJECTED.txt").write_text(reason + "\n", encoding="utf-8")
+    return dest
+
+
 def _task_env(task_dir: Path, snap: dict, tag: str) -> Sandbox:
     sb = Sandbox.start(tag, network="proxy", image=SANDBOX_IMAGE, log_dir=task_dir.parent.parent / "trials" / task_dir.name / tag)
     r = sb.exec(f"mkdir -p /work/repo && curl -fsSL --retry 3 https://codeload.github.com/{snap['owner']}/{snap['name']}/tar.gz/{snap['sha']}"
@@ -271,6 +307,10 @@ def oracle_check(task_dir: Path, snap: dict) -> dict:
                 b64 = base64.b64encode((task_dir / "solution" / f).read_bytes()).decode()
                 sb.exec(f"mkdir -p /work/.solution && echo '{b64}' | base64 -d > /work/.solution/{f}", timeout=60)
             r = sb.exec("bash /work/.solution/solve.sh", timeout=2400)
+            if r.exit_code in INFRA_EXIT_CODES:
+                # The container/daemon died (e.g. host disk full -> SIGBUS); that says nothing about the
+                # task, so let the stage retry instead of rejecting the package.
+                raise SandboxError(f"oracle container failed with exit {r.exit_code}: {r.output[-300:]}")
             reward = _grade(sb, task_dir)
         finally:
             sb.remove()

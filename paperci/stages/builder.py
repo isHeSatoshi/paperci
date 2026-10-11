@@ -6,6 +6,7 @@ redacted from the README) and its own command output."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import time
@@ -15,6 +16,7 @@ from .. import db, ledger, llm, tracing
 from ..config import (BUILDER_CAP_USD, BUILDER_MAX_TURNS, CMD_TIMEOUT_SEC, INTERNAL_NET, MODELS,
                       PAPER_WALL_SEC, RUN_TIMEOUT_SEC, RUNS_DIR, SANDBOX_IMAGE)
 from ..recovery import Recovery, classify, snippet_for
+from ..config import PROXY_NAME
 from ..sandbox import Sandbox, SandboxError, _docker, egress_since, ensure_infra
 
 GIVE_UP = ["needs_gpu", "data_unavailable", "needs_credentials", "too_slow", "broken_code",
@@ -127,10 +129,21 @@ class Builder:
                " && mkdir -p /work/repo && tar -xzf /tmp/repo.tgz -C /work/repo --strip-components=1 --no-same-owner"
                " && rm -f /tmp/repo.tgz && du -sh /work/repo")
         for attempt in range(3):
+            if attempt == 0 and os.environ.get("PAPERCI_CHAOS") == "proxy_down":
+                # Explicit fault injection for demonstrating self-healing; never on by default.
+                _docker("stop", "-t", "1", PROXY_NAME, check=False)
+                tracing.log("CHAOS: fault injected, egress proxy stopped before repo fetch", level="warning")
+                db.log_event(self.arxiv_id, self.run_label, "chaos", {"fault": "proxy_down"})
             with tracing.span("tool:fetch_repo", kind="TOOL", attempt=attempt) as s:
                 r = self.sb.exec(cmd, timeout=400)
                 tracing.set_attr(s, "exit_code", r.exit_code)
                 if r.exit_code == 0:
+                    for f in self.failures:
+                        if f["phase"] == "fetch":
+                            db.mark_recovered(f["failure_id"])
+                            f["recovered_by"] = "self-heal+retry"
+                    if attempt:
+                        tracing.log("fetch recovered on attempt {a} after self-heal", a=attempt + 1)
                     break
                 cat = classify(r.output, r.exit_code) or "fetch_failed"
                 fid = db.log_failure(self.arxiv_id, self.run_label, "builder.fetch", cat, r.tail(600),
@@ -377,7 +390,7 @@ class Builder:
         for f in self.failures:
             if built:
                 db.mark_recovered(f["failure_id"])
-            f["recovered"] = built
+            f["recovered"] = built or bool(f.get("recovered_by"))
         for p in set(self.pip):
             db.ex("INSERT INTO package_installs (ts, arxiv_id, package) VALUES (?,?,?)", (time.time(), self.arxiv_id, p))
         for k in ("status", "turns", "seconds", "cost_usd", "scale"):

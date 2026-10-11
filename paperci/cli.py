@@ -44,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--ids", nargs="*")
     i = sub.add_parser("improve"); i.add_argument("--labels", nargs="+", required=True); i.add_argument("--apply", action="store_true")
     e = sub.add_parser("envlearn"); e.add_argument("--min-papers", type=int, default=2); e.add_argument("--apply", action="store_true")
+    cy = sub.add_parser("cycle", help="one bot tick: watch -> prepare new -> reproduce next N -> dashboard")
+    cy.add_argument("--prepare", type=int, default=20); cy.add_argument("--reproduce", type=int, default=1)
+    cy.add_argument("--split", default=None); cy.add_argument("--label", default=None)
     sub.add_parser("stats"); sub.add_parser("budget")
     d = sub.add_parser("dashboard"); d.add_argument("--public", action="store_true")
     a = ap.parse_args(argv)
@@ -85,6 +88,26 @@ def main(argv: list[str] | None = None) -> int:
                     print("BUDGET STOP:", ex); break
                 except Exception as ex:
                     print(pid, "run failed:", type(ex).__name__, str(ex)[:300], flush=True)
+        elif a.cmd == "cycle":
+            import time as _t
+            from .dashboard import render
+            from .pipeline import prepare, reproduce
+            from .stages.watcher import watch
+            lab = a.label or "live-" + _t.strftime("%Y%m%d")
+            print("watch:", json.dumps(watch()), flush=True)
+            for r in db.q("SELECT arxiv_id FROM papers WHERE status='new' ORDER BY published DESC LIMIT ?", (a.prepare,)):
+                try:
+                    print("prepare", r["arxiv_id"], json.dumps(prepare(r["arxiv_id"])), flush=True)
+                except ledger.BudgetExceeded as ex:
+                    print("BUDGET STOP:", ex); break
+                except Exception as ex:
+                    print("prepare failed", r["arxiv_id"], type(ex).__name__, flush=True)
+            for pid in _queue(a.split, a.reproduce, None, lab):
+                try:
+                    print("reproduce", pid, json.dumps(reproduce(pid, lab, BUILDER_VARIANT)), flush=True)
+                except ledger.BudgetExceeded as ex:
+                    print("BUDGET STOP:", ex); break
+            print("dashboard:", render(public=False), render(public=True))
         elif a.cmd == "improve":
             from .improver import improve
             print(json.dumps(improve(a.labels, apply=a.apply), indent=1, default=str))

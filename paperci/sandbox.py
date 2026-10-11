@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import shutil
 import subprocess
 import tarfile
 import time
@@ -68,6 +69,16 @@ def ensure_infra() -> list[str]:
     if INTERNAL_NET not in info["NetworkSettings"]["Networks"]:
         _docker("network", "connect", INTERNAL_NET, PROXY_NAME)
         actions.append("reattached proxy to internal network")
+    # A sandbox that died mid-run (daemon crash) is never removed by its owner and can hold GBs of
+    # writable layer; on a near-full host disk that is what stops Docker from restarting.
+    dead = _docker("ps", "-aq", "--filter", "status=exited", "--filter", "name=paperci-", check=False).stdout.decode().split()
+    dead = [c for c in dead if c and c not in info["Id"]]
+    if dead:
+        _docker("rm", *dead, check=False)
+        actions.append(f"removed {len(dead)} dead sandbox container(s)")
+    free_gb = shutil.disk_usage(Path.home().anchor).free / 1e9
+    if free_gb < 5:
+        actions.append(f"WARNING host system disk low: {free_gb:.1f} GB free")
     return actions
 
 

@@ -15,6 +15,7 @@ PLAYBOOK_PATH = DATA_DIR / "playbook.json"
 
 # Ordered: first match wins for the primary category.
 TAXONOMY: list[tuple[str, str]] = [
+    ("proxy_unreachable", r"Could not resolve proxy|Failed to connect to paperci-egress|Cannot connect to proxy"),
     ("egress_denied", r"Tunnel connection failed: 403|403 Filtered|ProxyError|Access denied by proxy|Filtered"),
     ("no_network_at_run", r"Temporary failure in name resolution|Name or service not known|Network is unreachable|Failed to establish a new connection|nodename nor servname"),
     ("cuda_required", r"Torch not compiled with CUDA|no CUDA GPUs|CUDA driver|cuda\(\)|nvidia-smi: not found|NCCL|AssertionError: Torch not compiled"),

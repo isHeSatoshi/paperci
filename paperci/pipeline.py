@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 
 from . import db, ledger, sources, tracing
@@ -120,8 +121,10 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
                 per_claim = {}
                 if runs[0]["exit_code"] == 0:
                     arts = verifier.read_artifacts(runs[0]["artifact_dir"])
+                    metric_counts = Counter(c.metric.strip().lower() for c in sealed)
                     for c in sealed:
-                        ext = verifier.extract(arxiv_id, label, c, arts)
+                        ext = verifier.extract(arxiv_id, label, c, arts,
+                                               shared_metric=metric_counts[c.metric.strip().lower()] > 1)
                         per_claim[c.claim_id] = {"metric": c.metric, "extraction": ext,
                                                  "raw_values": [ext["value"]] if ext.get("found") else []}
                 tracing.set_attr(vs, "metrics_found", sum(1 for v in per_claim.values() if v["raw_values"]))
@@ -161,7 +164,7 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
                         norm_vals.append(nv)
                     pc["normalization"] = how
                     pc["comparison"] = verifier.compare(c, norm_vals)
-            integ = verifier.integrity(rdir / "build", sealed, rob["runs"], build.get("egress", {}))
+            integ = verifier.integrity(rdir / "build", sealed, rob["runs"], build.get("egress", {}), tree=snapshot.get("tree", []))
             v, conf, reason = verifier.verdict(build, rob["runs"], per_claim, integ)
             with tracing.span("stage:verdict", kind="GUARDRAIL", verdict=v, confidence=conf) as s:
                 tracing.set_attr(s, "reason", reason)
@@ -181,7 +184,11 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
         if pkg and pkg.get("task_id"):
             tdir = Path(pkg["path"])
             orc = _run_stage(arxiv_id, "oracle", label, lambda: tasks.oracle_check(tdir, snapshot), tid)
-            if orc["reward"] >= 0.999:
+            if orc["reward"] < 0.999:
+                tasks.reject(tdir, f"oracle_reward={orc['reward']}")
+                db.save_stage(arxiv_id, "package", label, output={**pkg, "task_id": None, "was": pkg["task_id"],
+                                                                 "invalidated": ["oracle_failed"]})
+            else:
                 def train():
                     atts = [tasks.solver_attempt(arxiv_id, label, tdir, snapshot, i) for i in range(1, SOLVER_ATTEMPTS + 1)]
                     return {"attempts": atts, "label": tasks.trainability(atts)}
@@ -200,7 +207,6 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
 
 
 def _apply_spec(spec: dict, arts: dict[str, str]) -> float | None:
-    import re
     text = arts.get(spec["file"])
     if text is None:
         return None
@@ -212,12 +218,7 @@ def _apply_spec(spec: dict, arts: dict[str, str]) -> float | None:
             return float(d)
         except Exception:
             return None
-    last = None
-    for line in text.splitlines():
-        m = re.search(spec["regex"], line.strip())
-        if m:
-            last = float(m.group(spec["group"]))
-    return last
+    return tasks.apply_regex(spec, text)
 
 
 def _write_report(arxiv_id, label, paper, snap, build, rob, dec, tid, sealed_sha) -> None:

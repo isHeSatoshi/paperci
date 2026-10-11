@@ -50,6 +50,15 @@ Frozen by design (the improver cannot touch these): verifier, claim sealing, tol
   sealed values are redacted, unseal is permission-checked and logged.
 - Anti-cheat: sealed values searched in everything the builder authored (script, writes, commands, repo diff);
   output files hashed against the pristine repo (copied results); proxy logs list refused hosts.
+- Integrity checks added after auditing our own held-out results (each one caught a real case):
+  `precomputed_results_replay` (the run script loads stored results / finishes in seconds while reading
+  result-like artifacts), `no_repo_code_path` (the run script never touches a repo module, e.g. a formula the
+  builder wrote itself), claim-id tagged evidence for claims sharing one metric name, header-aware extraction
+  (numbers in a `--- c2: ... 6000 steps ---` header are settings, not results), and whitespace-tolerant
+  extraction specs (multi-line evidence). Any integrity flag blocks packaging; `scripts/reverify.py` re-judges
+  every stored run with the current rules.
+- A packaged task whose own oracle does not earn reward 1 is moved to `registry/rejected/`. Container deaths
+  (daemon crash, exit 135/255) are retried as infra failures, never counted as task failures.
 - Repo text is treated as untrusted (prompt-injection warnings in every system prompt).
 - Verdicts about named papers are not published. `runs/`, `registry/` and reports are git-ignored; the public
   dashboard is anonymized.

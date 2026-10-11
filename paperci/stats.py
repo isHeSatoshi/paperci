@@ -26,11 +26,20 @@ def label_stats(label: str) -> dict:
     n_built = sum(1 for b in builds if b["out"].get("status") == "built")
     vc = Counter(v["out"]["verdict"] for v in verdicts)
     measured = sum(1 for v in verdicts if any(pc.get("comparison") for pc in v["out"].get("per_claim", {}).values()))
-    validated = sum(1 for o in orc if o["out"].get("reward", 0) >= 0.999)
+    live = {r["arxiv_id"] for r in pk}
+    validated = sum(1 for o in orc if o["out"].get("reward", 0) >= 0.999 and o["arxiv_id"] in live)
+    flagged = [v for v in verdicts if v["out"].get("integrity", {}).get("flags")]
+    clean_measured = [v for v in verdicts if not v["out"].get("integrity", {}).get("flags")
+                      and any(pc.get("comparison") for pc in v["out"].get("per_claim", {}).values())]
+    within = sum(1 for v in clean_measured for pc in v["out"]["per_claim"].values()
+                 if (pc.get("comparison") or {}).get("within") and pc["comparison"]["n"] >= 2)
     return {
         "label": label, "papers_attempted": len(builds), "built": n_built,
         "build_success_rate": round(n_built / len(builds), 3) if builds else None,
-        "metric_measured": measured, "verdicts": dict(vc), "packaged": len(pk), "oracle_validated": validated,
+        "metric_measured": measured, "integrity_flagged": len(flagged),
+        "integrity_flags": dict(Counter(f for v in flagged for f in v["out"]["integrity"]["flags"])),
+        "faithful_measured": len(clean_measured), "claims_within_tol_n2": within,
+        "verdicts": dict(vc), "packaged": len(pk), "oracle_validated": validated,
         "trainability": dict(Counter(t["out"]["label"] for t in tr)),
         "avg_builder_turns": round(sum(b["out"].get("turns", 0) for b in builds) / len(builds), 2) if builds else None,
         "avg_build_minutes": round(sum(b["out"].get("seconds", 0) for b in builds) / len(builds) / 60, 2) if builds else None,

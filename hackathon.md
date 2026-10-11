@@ -40,6 +40,11 @@
 - 2026-10-11 Self-improvement may only change the builder's playbook and base image; verifier, sealing, tolerances and held-out split are frozen.
 - 2026-10-11 Allowlist widened with `api.github.com` (GitHub) and OpenML (dataset host) after both were denied in real dev runs; applied equally to v1 and v2.
 - 2026-10-11 Competitor list fact-checked (docs/landscape.md); two items from the brief could not be verified and are not claimed.
+- 2026-10-11 Gen1 advice did not change behaviour on dev, so gen2 escalated to an enforced controller (run code by turn 5, script by turn 8, single target), gated by a worst-case cost projection.
+- 2026-10-11 Audited our own held-out "successes" by hand before reporting them; 2 of 3 v2 builds were not faithful (replayed a stored results pickle; scored a formula the builder wrote instead of repo code). Added `precomputed_results_replay` and `no_repo_code_path` integrity flags and re-judged every run with `scripts/reverify.py`. Reported numbers use the stricter judge.
+- 2026-10-11 A task whose own oracle fails is not a task: moved to registry/rejected. Container deaths are infra retries, not task failures.
+- 2026-10-11 Extraction specs made whitespace-tolerant and header-aware after the 09280-class oracle failure (evidence spanned two log lines; a `--- c2: ... (slot 1), 6000 steps ---` header was read as the value 1).
+- 2026-10-11 Repo stays private until a final secret scan; then made public (user authorized).
 
 ## Build log
 ### 2026-10-11 (Sun) early hours IST
@@ -55,10 +60,26 @@
 - First end-to-end run (dev, builder v1) on a conformal-prediction library paper: max turns (18) without submit; 12 of 18 turns spent reading notebooks; proxy refused `www.openml.org` 10x; cost $0.195; verdict blocked-infra. Trace `8317eed8f23841370ecf981472520ffa`.
 - Bugs found from that trace: (1) `bash -lc` login shell reset PATH, so commands used system Python instead of /opt/venv (fixed: plain `bash -c` + explicit PATH); (2) `cmd | tail` hides failures (exit 0) so egress denials were not classified (fixed: masked-failure detection); (3) classifier false positive on `cat` of source code mentioning FileNotFoundError (fixed: read-only commands never classified).
 - Entire: hooks were installed mid-session, so no automatic checkpoint; attached the session manually. Transcript secret-scanned first (0 hits for all 4 secrets). Checkpoint **01M4KP3DNR0TF8TWQE611MJJYV** on commit `e70be0f`.
-- Dev baseline (builder v1), first 6 dev papers in queue order: see "Results" (filled from `python -m paperci stats`).
+- Dev baseline (builder v1), 7 dev papers in queue order: 0 built (3 max_turns, 4 gave up), $0.225/attempt.
 
-## Results (measured; numbers only from `python -m paperci stats`)
-- (filled in as runs complete; see docs/evidence.md)
+### 2026-10-11 (Sun) morning IST
+- Improver gen1 (from dev-v1 traces): 4 rules accepted, 4 rejected (2 "stale": claimed hosts were blocked that had since been allowlisted). envlearn promoted `huggingface_hub` -> image gen1. dev-v2: still max_turns, so advice alone was not enough.
+- Gen2: enforced controller + 3 rules (5 rejected, one for advising a "guess" of numbers). dev-g2: one paper built in 10 turns (toy-scale), oracle 1.0.
+- Held-out v1 vs v2 on the same 5 papers (queue order): see Results.
+- Self-audit found replay/formula cheats in 2 v2 builds; new integrity checks + re-verification (see Decisions).
+- Oracle for the faithful held-out build failed (reward 0): diagnosed as an extraction-spec bug (multi-line evidence, header numbers). Fixed, re-packaged: oracle 1.0.
+- Host disk C: filled up (Docker image of one dev build was 17 GB) and Docker Desktop died mid-oracle (exit 135). User freed space; we deleted our stale build images; added dead-container cleanup + low-disk warning to `ensure_infra()` and treat exit 135/255 as infra retries.
+- Chaos run (`PAPERCI_CHAOS=proxy_down`, dev paper): repo fetch failed (`Could not resolve proxy`), self-heal restarted the proxy, retry succeeded, failure marked recovered; builder then gave up correctly in 5 turns ($0.088, data not released). Trace `14ed5fe7f083b2b1ff4c98fbbf705223`. The failure was classified generic `nonzero_exit`; added a `proxy_unreachable` class afterwards.
+
+## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
+- Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
+- Held-out before/after, same 5 papers, same sealed claims (v1 baseline -> v2 self-improved):
+  - built 2/5 -> 3/5; avg builder turns 16.2 -> 10.2; avg build minutes 6.6 -> 5.0; LLM $/attempt 0.255 -> 0.182.
+  - After integrity checks, faithful measured runs 1 -> 1 (honest: v2's extra build is flagged `no_repo_code_path`, and one paper replays stored results in both v1 and v2).
+  - Claims within calibrated tolerance with n>=2 reruns: 0 -> 2. Oracle-validated tasks: 0 -> 1 (v1's build of the same paper fails its own oracle).
+  - Best before/after trace pair (same paper): v1 `294209f0b2d1b60bfc1509fdbece2f1b` (19 LLM calls, 274k tokens) vs v2 `4e85d604ac7a5d343950ee923f573502` (13 LLM calls, 142k tokens).
+- Registry: 2 validated tasks (1 held-out toy-scale, 1 dev toy-scale), both "too hard for cheap solver" (0/2 Haiku). 4 packages rejected (3 integrity, 1 oracle).
+- Total LLM spend: $5.44 of the $20 key (ledger = proxy-reported).
 
 ## Demo
 - Local: `python -m paperci dashboard` -> registry/index.html (private), `--public` -> docs/dashboard_public.html.
