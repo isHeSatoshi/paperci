@@ -10,7 +10,7 @@ paper's authors._
 [Live board](https://paperci.vercel.app/board) · [ICML 2026 results, by paper](https://paperci.vercel.app/icml) ·
 [Technical write-up](TECHNICAL_WRITEUP.md)
 
-![Taking the paper's numbers on trust vs PaperCI's agent rebuilding the repo, rerunning it offline and verifying every claim](docs/img/memes/code-available.png)
+![Taking the paper's numbers on trust vs PaperCI's agent verifying each claim in your paper by rebuilding the repo in a sandbox](docs/img/memes/code-available.png)
 
 A pull request gets a bot that runs the tests on every change. A paper gets expert reviewers, and that review
 is valuable and not cheap: pre-submission review services charge **$200 to $800 per paper** (Enago lists
