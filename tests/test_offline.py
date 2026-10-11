@@ -105,6 +105,45 @@ def test_paper_formats():
     assert paper_text(b"<html><title>T</title><body><p>RMSE 0.23</p></body></html>", "p.html")[1] == "T"
 
 
+def test_verified_patch():
+    from paperci.review import reproduce_file, verified_patch
+    diff = (
+        "diff -ruN --exclude=__pycache__ /opt/orig/repo/train.py /work/repo/train.py\n"
+        "--- /opt/orig/repo/train.py\t2026-10-01 10:00:00\n+++ /work/repo/train.py\t2026-10-11 10:00:00\n"
+        "@@ -1,2 +1,2 @@\n-import torch.cuda as dev\n+import torch\n x = 1\n"
+        "diff -ruN --exclude=__pycache__ /opt/orig/repo/results/metrics.json /work/repo/results/metrics.json\n"
+        "--- /opt/orig/repo/results/metrics.json\t1970-01-01 00:00:00\n+++ /work/repo/results/metrics.json\t2026-10-11\n"
+        "@@ -0,0 +1 @@\n+{\"acc\": 0.9}\n"
+        "diff -ruN --exclude=__pycache__ /opt/orig/repo/pkg.egg-info/PKG-INFO /work/repo/pkg.egg-info/PKG-INFO\n"
+        "--- /opt/orig/repo/pkg.egg-info/PKG-INFO\t1970-01-01\n+++ /work/repo/pkg.egg-info/PKG-INFO\t2026-10-11\n@@ -0,0 +1 @@\n+x\n"
+        "Binary files /opt/orig/repo/m.pt and /work/repo/m.pt differ\n")
+    files = verified_patch(diff)
+    assert [f["path"] for f in files] == ["train.py"], files  # generated outputs, egg-info and binaries dropped
+    assert files[0]["diff"].startswith("diff --git a/train.py b/train.py\n--- a/train.py\n+++ b/train.py")
+    rf = reproduce_file("set -e\ncd /work/repo\npython eval.py > /work/out/log.txt\n")
+    assert rf["path"] == "reproduce.sh" and "cd ." in rf["diff"] and "./paperci_out/log.txt" in rf["diff"], rf
+
+
+def test_daily_cap(monkeypatch=None):
+    import os
+    import time
+    from paperci import db, ledger
+    os.environ["PAPERCI_DAILY_CAP"] = "0.0001"
+    os.environ["PAPERCI_CAP_SINCE"] = str(time.time() + 3600)  # nothing spent since "deploy" -> one cheap call passes
+    try:
+        ledger.precheck("-", "test", 0.00005)
+        try:
+            ledger.precheck("-", "test", 0.01)
+            raise AssertionError("daily cap not enforced")
+        except ledger.BudgetExceeded as e:
+            assert "daily cap" in str(e)
+        ledger.precheck("-", "test", 0.01, allow_reserve=True)  # demo/reserve calls are exempt
+    finally:
+        os.environ.pop("PAPERCI_DAILY_CAP")
+        os.environ.pop("PAPERCI_CAP_SINCE")
+    assert db is not None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

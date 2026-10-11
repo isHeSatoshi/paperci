@@ -11,6 +11,13 @@
 - Docs generated: docs/evidence.md, docs/unit-economics.md, dashboards (registry/index.html private,
   docs/dashboard_public.html anonymized). Spend $5.44 of $20.
 
+## Cloud (2026-10-11 evening IST onward)
+- The primary copy now runs on EC2 `i-0184830ca8b082fb9` (44.215.70.124, https://44-215-70-124.sslip.io). It
+  started from a copy of the local DB, runs and registry. Local runs after this point diverge from it.
+- SSH: `ssh -i $HOME\.ssh\paperci_aws ubuntu@44.215.70.124` (only from the operator IP in the security group).
+- Deploy: `git pull` on the server + `sudo systemctl restart paperci-web`. State: `python -m paperci.ops events`.
+- Backup: `scripts/pull_cloud.ps1`. Teardown: `deploy/aws/provision.py down`. Details: docs/cloud.md.
+
 ## How to resume
 1. Docker: if `docker version` fails, check C: free space first (it filled once). Restart Docker Desktop via
    `Invoke-CimMethod Win32_Process Create` (not Start-Process from the agent shell).

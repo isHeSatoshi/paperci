@@ -3,6 +3,26 @@
 Batched for you. Each item has exact steps. Nothing here has been done by the agent.
 Status legend: TODO / DONE (mark it yourself).
 
+## A. More LLM credits for the always-on agent — TODO (you said you can get more), ~5 min
+The cloud agent is capped at $1.50/day (`PAPERCI_DAILY_CAP`) because the key has about $11.67 left of $20, and
+our own hard stop is $16. At that cap it reproduces about 5 papers a day. Measured costs: about $0.18-0.25 per
+reproduction attempt, about $0.05 per cycle to triage and seal new papers, about $0.10 per nightly learning run.
+Running the full schedule (a cycle every 90 min) costs about $4-5/day.
+Ask the organizers for: **+$30 on the same LiteLLM key** (same models: claude-sonnet-4.6, claude-haiku,
+nova-pro, nova-micro; no opus), valid through Fri 2026-10-16. That covers about 5 days at $4.5/day plus a
+demo-day reserve. Then tell the agent "credits added" and it will raise `PAPERCI_GLOBAL_BUDGET`,
+`PAPERCI_HARD_STOP` and `PAPERCI_DAILY_CAP` on the server.
+
+## B. Invite codes for the public app — share as you like
+Submissions on https://44-215-70-124.sslip.io need an invite code (each run spends LLM budget and runs public
+code). The codes are in `%TEMP%\paperci-deploy\codes.txt` on this machine and in the server's `.env`.
+They are not in git. Give one to judges and keep one for yourself. The live board needs no code.
+
+## C. The cloud server — nothing to do, FYI
+It stops itself on 2026-10-16 23:59 IST. If you want it gone earlier (or after), run
+`python deploy/aws/provision.py down` with AWS credentials, or ask the agent to tear it down. Run
+`powershell -File scripts\pull_cloud.ps1` before that to keep a copy of everything it did.
+
 ## 0. Disk space on C: (recommended) — TODO, ~10 min
 C: ran out of space during the run (Docker died). PaperCI's stale images were deleted, but Docker's disk file
 `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` (39 GB) does not shrink on its own. To reclaim host space:

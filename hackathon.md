@@ -95,6 +95,24 @@
   instead of a refused host; PyTorch's new CDN host `download-r2.pytorch.org` added to the allowlist; the author
   reply LLM copied a claim value into the builder notes (the builder's redaction caught it, as designed).
 
+### 2026-10-11 (Sun) evening IST: the agent moves to the cloud and runs itself
+- The hackathon gave $25 of AWS credits. Dry runs mapped the shared account's limits: us-east-1 only, up to t3.large,
+  50 GB disk, no CloudFormation, SSM, SES or Bedrock. An encrypted launch was killed by
+  `Client.InvalidKMSKey.InvalidState` (the account's default EBS key is broken), and the Elastic IP limit was
+  already reached. Deployed one t3.large (`i-0184830ca8b082fb9`) with an idempotent boto3 script, a bootstrap
+  script, systemd units and Caddy HTTPS on an sslip.io hostname. It powers itself off on Fri 2026-10-16 23:59 IST.
+- Autopilot: every 90 minutes (when no author is waiting) it watches arXiv, triages and seals new papers,
+  reproduces the freshest never-attempted one, and publishes an anonymized review to the live board.
+- Nightly: self-improvement from the last two days of dev-split failures (held-out never feeds the learner),
+  a chaos drill (kill the egress proxy, or leave an orphaned sandbox behind), and a daily digest.
+- Watchdog (every 3 min, root): Docker, egress proxy and network, orphaned sandboxes, disk pressure, web health.
+  Repairs are logged as incidents on the board.
+- Reviews gained **verified suggested changes** like a CodeRabbit PR review: the repo patch the builder needed,
+  a `reproduce.sh` entry point, and a pinned lockfile of the environment that worked. Each is verified by the
+  offline reruns and downloadable as `paperci.patch`.
+- Public safety: submissions need an invite code and are rate-limited per IP; a daily LLM cap (`PAPERCI_DAILY_CAP`)
+  sits on top of the per-paper, per-stage and global stops. The board only shows anonymized ids.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).

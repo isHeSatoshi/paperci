@@ -5,6 +5,20 @@ papers' code is never re-run by anyone. **PaperCI reviews a paper the way CI rev
 code. It rebuilds the paper's environment from scratch in a fresh sandbox, re-runs the code, and checks
 **every headline claim in the paper against what the code actually produces.**
 
+### It is running right now
+
+Until 2026-10-16 23:59 IST, PaperCI runs by itself on AWS. **Live board: https://44-215-70-124.sslip.io/board**
+(anonymized). Every 90 minutes it pulls new arXiv papers with code, triages them, seals their claims and
+reproduces the freshest one. Every night it learns new recovery rules from the day's failures (gated; held-out
+papers never feed it), runs a chaos drill against itself, and writes a digest. A watchdog repairs Docker, the
+egress proxy, orphaned sandboxes, disk pressure and the web app on its own, and logs each repair as an
+incident. Details: [docs/cloud.md](docs/cloud.md).
+
+Reviews now end like a CodeRabbit PR review, with **verified suggested changes**. These are the exact repo patch
+the agent needed, a `reproduce.sh` entry point and a pinned `requirements.lock.txt` of the environment that
+worked. They are verified because PaperCI applied them and re-ran the paper's code offline in fresh
+containers. Each comes as a downloadable `paperci.patch` (`git apply paperci.patch`).
+
 ### For authors: the web app (an agent you talk to, not a form)
 
 ```

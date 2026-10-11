@@ -290,7 +290,10 @@ def watchdog() -> list[str]:
             for a in ensure_infra():
                 if a.startswith("WARNING"):
                     continue
-                event("incident", f"Sandbox infrastructure drift repaired: {a}", healed=True, component="sandbox")
+                if not st.get("last_run"):  # first start on a fresh host is setup, not an incident
+                    event("boot", f"First start: sandbox infrastructure set up ({a})")
+                else:
+                    event("incident", f"Sandbox infrastructure drift repaired: {a}", healed=True, component="sandbox")
                 acts.append(a)
         except Exception as ex:
             event("incident", f"Could not repair sandbox infrastructure: {str(ex)[:160]}", healed=False, component="sandbox")
