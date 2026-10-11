@@ -88,7 +88,9 @@ CONVERSATION SO FAR:
 AUTHOR'S REPLY: {reply}"""
 
 SUMMARY = """Your verification finished. Tell the author the outcome in at most 120 words: what reproduced, what
-differed or could not be measured and the most likely reason, and the 1-2 most useful fixes. Be honest and kind;
+differed or could not be measured and the most likely reason, and the 1-2 most useful fixes. If builder_stopped
+shows the engineer gave up, state its category and reason accurately (for example: the linked repository is the
+code of a different paper) and do not invent another cause. Be honest and kind;
 a reduced-scale run is evidence, not proof. End by offering to watch their repository and re-verify on every new
 commit. Do not use markdown tables.
 
@@ -214,7 +216,8 @@ def summary(pid: str, label: str) -> str:
         slim = {"headline": r["headline"], "verdict": r["verdict"], "scale_reduced": r["build"].get("scale") == "reduced",
                 "claims": [{k: c[k] for k in ("id", "metric", "paper_value", "measured", "sd", "n", "status")} for c in r["claims"]],
                 "failed_checks": [n + ": " + t for s, n, t in r["checks"] if s == "bad"],
-                "suggestions": [t for t, _ in r["suggestions"]]}
+                "suggestions": [t for t, _ in r["suggestions"]],
+                "builder_stopped": {k: str(r["build"].get(k) or "")[:500] for k in ("status", "give_up_category", "reason")}}
         return _chat(SUMMARY.format(review=json.dumps(slim, default=str)), Intake, pid, label, max_tokens=500).message
     except Exception:
         return "Your review is ready below."
