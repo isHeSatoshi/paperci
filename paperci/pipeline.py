@@ -5,14 +5,15 @@ before/after comparison sees exactly the same targets and sealed values."""
 from __future__ import annotations
 
 import json
+import os
 import time
 import traceback
 from collections import Counter
 from pathlib import Path
 
-from . import db, ledger, sources, tracing
+from . import db, ledger, live, sources, tracing
 from .config import MODELS, ROBUST_RERUNS, RUNS_DIR, SOLVER_ATTEMPTS, STAGE_MAX_ATTEMPTS
-from .sandbox import ensure_infra
+from .sandbox import _docker, ensure_infra
 from .stages import claims as claims_mod
 from .stages import tasks, triage, verifier
 from .stages.builder import Builder
@@ -32,7 +33,10 @@ def _run_stage(arxiv_id: str, stage: str, label: str, fn, trace_id: str | None):
     cached = _load(arxiv_id, stage, label)
     if cached is not None:
         tracing.log("stage {stage} resumed from state", stage=stage)
+        live.emit("resume", f"{STAGE_TITLES.get(stage, stage)} (already done, resumed from state)")
         return cached
+    live.emit("start", STAGE_TITLES.get(stage, stage))
+    t_stage = time.time()
     row = db.get_stage(arxiv_id, stage, label)
     attempts = (row["attempts"] if row else 0)
     last_exc = None
@@ -45,6 +49,8 @@ def _run_stage(arxiv_id: str, stage: str, label: str, fn, trace_id: str | None):
             out = fn()
             db.save_stage(arxiv_id, stage, label, status="done", output=out, finished_at=time.time(),
                           cost_usd=ledger.paper_total(arxiv_id) - c0, error=None)
+            live.emit("ok", f"{STAGE_TITLES.get(stage, stage)} done in {time.time() - t_stage:.0f}s"
+                      f" (${ledger.paper_total(arxiv_id) - c0:.3f}){_stage_note(stage, out)}")
             return out
         except ledger.BudgetExceeded:
             db.save_stage(arxiv_id, stage, label, status="budget", finished_at=time.time())
@@ -56,10 +62,43 @@ def _run_stage(arxiv_id: str, stage: str, label: str, fn, trace_id: str | None):
             db.log_failure(arxiv_id, label, f"pipeline.{stage}", type(e).__name__, str(e)[:500], trace_id=trace_id)
             tracing.log("stage {stage} crashed ({err}); attempt {a}/{m}", level="error", stage=stage,
                         err=type(e).__name__, a=attempts, m=STAGE_MAX_ATTEMPTS)
+            live.emit("fail", f"{STAGE_TITLES.get(stage, stage)} crashed: {type(e).__name__}; retry {attempts}/{STAGE_MAX_ATTEMPTS}")
             healed = ensure_infra() if "docker" in str(e).lower() or "Sandbox" in type(e).__name__ else []
             if healed:
                 tracing.log("self-heal: {healed}", healed=healed)
+                live.emit("heal", f"self-heal: {', '.join(healed)}")
     raise RuntimeError(f"stage {stage} failed after {attempts} attempts: {last_exc}")
+
+
+STAGE_TITLES = {
+    "snapshot": "Snapshot repository metadata", "triage": "Triage: can this run on a CPU sandbox?",
+    "claims": "Extract and seal the paper's headline claims", "build": "Builder agent: get the code running",
+    "verify": "Independent verifier: offline run (network off)", "robustness": "Robustness: reruns with other seeds",
+    "verdict": "Verdict: claims vs measured, integrity checks", "package": "Package as an executable task",
+    "oracle": "Oracle: replay the solution in a fresh environment", "trainability": "Trainability: can a cheap solver do it?",
+}
+
+
+def _stage_note(stage: str, out: dict) -> str:
+    try:
+        if stage == "triage":
+            return f" -> {out['decision']}" + (f" ({'; '.join(out.get('rule_reasons') or [])[:120]})"
+                                               if out["decision"] != "accept" else "")
+        if stage == "claims":
+            return f" -> {out['n_claims']} claims sealed (sha256 {out['sealed_sha256'][:12]}...)"
+        if stage == "build":
+            return f" -> {out['status']} in {out.get('turns')} turns" + (f", scale {out['scale']}" if out.get("scale") else "")
+        if stage in ("verify", "robustness"):
+            return " -> exit codes " + str([r["exit_code"] for r in out.get("runs", [])])
+        if stage == "verdict":
+            return f" -> {out['verdict']} ({out['confidence']})" + (f", flags {out['integrity']['flags']}" if out["integrity"]["flags"] else "")
+        if stage == "oracle":
+            return f" -> reward {out['reward']}"
+        if stage == "trainability":
+            return f" -> {out['label']}"
+    except Exception:
+        pass
+    return ""
 
 
 def paper_row(arxiv_id: str) -> dict:
@@ -199,6 +238,10 @@ def reproduce(arxiv_id: str, label: str, variant: str) -> dict:
                 (tdir / "paperci.json").write_text(json.dumps(meta, indent=1))
         cost = ledger.paper_total(arxiv_id, label) + sum(
             ledger.paper_total(arxiv_id, f"{label}-solver{i}") for i in range(1, SOLVER_ATTEMPTS + 1))
+        if build.get("image") and not os.environ.get("PAPERCI_KEEP_IMAGES"):
+            # Built images are only needed for the offline reruns above (the oracle replays from the base
+            # image); one can be >15 GB, and keeping them filled the host disk once.
+            _docker("rmi", "-f", build["image"], check=False)
         tracing.set_attr(root, "verdict", dec["verdict"])
         tracing.set_attr(root, "cost_usd", round(cost, 4))
         tracing.set_attr(root, "build_status", build.get("status"))

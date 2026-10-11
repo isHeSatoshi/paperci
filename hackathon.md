@@ -76,15 +76,25 @@
   read-only (tag/comment FORBIDDEN, sharing read-only), and ingestion is degraded (Doctor probe now fails with
   TRACE_READBACK_TIMEOUT; 16 traces in `dlq`). Wrote `docs/neatlogs-feedback.md` for the neatlogs team.
 
+- Product: `python -m paperci review <arxiv-id>` runs the whole pipeline with CI-style live output and ends in a
+  CodeRabbit-style review (HTML + Markdown + README badge): pipeline strip, walkthrough, claims-vs-measured table,
+  checks, suggestions for authors, reproduce-it-yourself. First live run on a fresh dev paper: 11.9 min, $0.149.
+  Built images are now deleted after each run (one was 17 GB), and a run stops if the host disk is under 5 GB.
+- Second held-out batch (5 more papers, v1 and v2) to double the before/after sample.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
-- Held-out before/after, same 5 papers, same sealed claims (v1 baseline -> v2 self-improved):
-  - built 2/5 -> 3/5; avg builder turns 16.2 -> 10.2; avg build minutes 6.6 -> 5.0; LLM $/attempt 0.255 -> 0.182.
-  - After integrity checks, faithful measured runs 1 -> 1 (honest: v2's extra build is flagged `no_repo_code_path`, and one paper replays stored results in both v1 and v2).
-  - Claims within calibrated tolerance with n>=2 reruns: 0 -> 2. Oracle-validated tasks: 0 -> 1 (v1's build of the same paper fails its own oracle).
+- Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).
+  First 5 papers ran before the self-audit; the second 5 ran afterwards with the stricter judge; all 20 runs are
+  judged by the same final rules:
+  - built 3/10 -> 5/10; avg builder turns 16.5 -> 11.8; LLM $/attempt 0.237 -> 0.178; builder failures 29 -> 11.
+  - Faithful measured runs (built, no integrity flag) 1 -> 2; claims within calibrated tolerance (n>=2 reruns) 0 -> 2;
+    oracle-validated tasks 0 -> 2. Integrity flags caught 3 runs in each arm (replayed results, or a run script that
+    never calls the repo's code); those are excluded from every "faithful" number.
+  - First 5 only (before the audit): built 2/5 -> 3/5, faithful 1 -> 1, validated 0 -> 1.
   - Best before/after trace pair (same paper): v1 `294209f0b2d1b60bfc1509fdbece2f1b` (19 LLM calls, 274k tokens) vs v2 `4e85d604ac7a5d343950ee923f573502` (13 LLM calls, 142k tokens).
-- Registry: 2 validated tasks (1 held-out toy-scale, 1 dev toy-scale), both "too hard for cheap solver" (0/2 Haiku). 4 packages rejected (3 integrity, 1 oracle).
-- Total LLM spend: $5.44 of the $20 key (ledger = proxy-reported).
+- Registry: 4 oracle-validated tasks (2 held-out, 2 dev; all reduced-scale), all "too hard for cheap solver" (0/2 Haiku). 4 packages rejected (3 integrity, 1 oracle).
+- Total LLM spend: $7.77 of the $20 key (ledger = proxy-reported).
 
 ## Entire checkpoints (session reasoning attached to commits)
 - **01M4KP3DNR0TF8TWQE611MJJYV** on `e70be0f` (verifier, packager, oracle, self-improvement loop):

@@ -64,6 +64,37 @@ def arxiv_search(query: str, max_results: int = 50, start: int = 0) -> list[dict
     return out
 
 
+def parse_arxiv_id(s: str) -> str:
+    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", s)
+    if not m:
+        raise ValueError(f"not an arXiv id or URL: {s}")
+    return m.group(1)
+
+
+def fetch_paper(arxiv_id: str) -> dict:
+    """One paper by id, with its code link from the abstract/comment, the paper HTML, or Hugging Face."""
+    r = _arxiv_get("http://export.arxiv.org/api/query", params={"id_list": arxiv_id, "max_results": 1})
+    r.raise_for_status()
+    e = ET.fromstring(r.text).find("a:entry", ATOM)
+    if e is None or not e.findtext("a:title", "", ATOM).strip():
+        raise ValueError(f"arXiv has no paper {arxiv_id}")
+    abstract = " ".join((e.findtext("a:summary", "", ATOM) or "").split())
+    comment = e.findtext("arxiv:comment", "", ATOM) or ""
+    repo = find_github(abstract + " " + comment)
+    if not repo:
+        try:
+            h = requests.get(f"https://huggingface.co/api/papers/{arxiv_id}", headers=UA, timeout=30)
+            if h.status_code == 200 and h.json().get("githubRepo"):
+                repo = find_github(h.json()["githubRepo"])
+        except Exception:
+            pass
+    if not repo:
+        repo = paper_links(arxiv_id)
+    return {"arxiv_id": arxiv_id, "title": " ".join((e.findtext("a:title", "", ATOM) or "").split()),
+            "abstract": abstract, "comment": comment, "categories": [c.get("term") for c in e.findall("a:category", ATOM)],
+            "published": e.findtext("a:published", "", ATOM), "repo_url": repo}
+
+
 def hf_daily(limit: int = 100) -> list[dict]:
     """Hugging Face Daily Papers: community-curated fresh arXiv papers, many with a
     linked GitHub repo. Author fields are deliberately not stored."""

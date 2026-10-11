@@ -13,7 +13,7 @@ import re
 import statistics
 from pathlib import Path
 
-from .. import llm, tracing
+from .. import live, llm, tracing
 from ..config import MODELS, RUN_TIMEOUT_SEC, RUNS_DIR
 from ..sandbox import Sandbox
 from ..schemas import Claim, LLMExtraction
@@ -54,6 +54,8 @@ def offline_run(arxiv_id: str, run_label: str, image: str, seed: int) -> dict:
         copied = sorted(orig_h[h] for h in out_h & set(orig_h))
         res = {"seed": seed, "exit_code": code, "seconds": r.seconds, "timed_out": r.timed_out,
                "artifact_dir": str(out_dir / "artifacts"), "n_files": len(files), "copied_from_repo": copied}
+        live.emit("ok" if code == 0 else "fail", f"fresh container, --network none, SEED={seed}: exit {code} in "
+                                                 f"{r.seconds:.0f}s, {len(files)} output files", indent=1)
         for k in ("exit_code", "seconds", "n_files"):
             tracing.set_attr(s, k, res[k])
         return res

@@ -1,10 +1,52 @@
-# PaperCI: continuous integration for arXiv
+# PaperCI: CodeRabbit for research papers
 
-PaperCI is a CodeRabbit-style bot for research papers. It watches fresh arXiv papers that ship code, tries
-to run that code inside a locked-down sandbox, checks the paper's headline numbers with an independent
-verifier, and turns each verified run into an executable task (Harbor format) for evaluating or training
-agents. It also improves itself: failures it sees in its own traces become new recovery rules, a learned
-control policy, and a better sandbox image. Promotion is gated, so it can never improve by moving its own judge.
+Every pull request gets a bot that runs the tests and reviews the change. Research papers get nothing: most
+papers' code is never re-run by anyone. **PaperCI reviews a paper the way CI reviews a PR.** It doesn't lint the
+code. It rebuilds the paper's environment from scratch in a fresh sandbox, re-runs the code, and checks
+**every headline claim in the paper against what the code actually produces.**
+
+```
+python -m paperci review <arxiv-id-or-url>        # whole pipeline, live, ends in a review
+python -m paperci review <arxiv-id> --from-run L  # re-render the review of an earlier run (no spend)
+python -m paperci reviews                         # PR-list style index of every review
+```
+
+A real run (12 minutes, $0.15, paper identity hidden). Note turn 5: the learned controller forces the agent
+to stop reading and run code; the review at the end is honest that the numbers differ at reduced scale.
+
+![paperci review, live](docs/img/terminal.png)
+
+The output is a review page like a CodeRabbit PR comment (`registry/reviews/<paper>.html` + `.md` + a README
+badge `.svg`): a pipeline strip, a walkthrough of how the environment was built, a **claims-vs-measured table**
+(paper value, measured mean ± sd over offline reruns, calibrated tolerance, status), CI-style checks
+(sandbox, sealing, offline reruns, anti-cheat, oracle), **actionable suggestions for the authors**, and a
+"reproduce it yourself" section with the exact script and every command the agent ran.
+
+![PaperCI review (anonymized)](docs/img/review.png)
+
+Why you can trust a PaperCI review:
+- **The agent that builds never sees the numbers it has to hit.** Claims are extracted from the paper text with
+  verbatim quotes and sealed (sha256) before the build starts.
+- **A different model family judges.** The builder is Claude; the verifier is Amazon Nova, which reruns the
+  script in fresh containers with the network disconnected and reads only the output files.
+- **It catches shortcuts, including its own agent's.** Hardcoded answers, copied result files, replayed
+  precomputed results, and run scripts that never call the repo's code all fail the review
+  ([a real case](docs/img/review-caught.png): the run replayed stored results, so no claim was trusted).
+- **Every reproduction becomes a task.** A run that passes is packaged as a Harbor task whose oracle is
+  validated by replay, so fresh papers become fresh, verifiable agent benchmarks.
+
+It also **improves itself and heals itself**: failures in its own neatlogs traces become recovery rules, an
+enforced control policy and a better sandbox image (gated, measured on held-out papers it never tuned on);
+infrastructure faults (dead proxy, crashed containers) are repaired and retried automatically.
+
+For authors: `integrations/github-action/paperci-review.yml` runs the same review on every release of the
+paper's repo and posts it to the job summary with a badge (template; see the file header).
+
+**Where this goes.** Today PaperCI handles papers whose claims can be re-derived by deterministic code on a
+CPU in minutes. The same loop (seal the claims, build the environment, rerun, verify independently) extends
+to GPU workloads and then to papers whose evidence comes from simulators: robotics, physics, chemistry. As
+simulation environments get better, the bottleneck in AI evaluation shifts from writing benchmarks to
+verifying them, and PaperCI turns each new paper into one.
 
 Built for neatHack 2026 with **neatlogs** (every LLM call and stage traced), **Entire** (build sessions
 captured as checkpoints on commits) and **cfo.ai** (business plan, see `docs/unit-economics.md`).
@@ -72,6 +114,8 @@ Frozen by design (the improver cannot touch these): verifier, claim sealing, tol
 
 ## Run
 ```
+python -m paperci review <arxiv-id> [--anonymize] [--open] # one paper end to end -> review page
+python -m paperci reviews                                 # re-render all reviews + index
 python -m paperci watch                                   # fetch fresh code papers
 python -m paperci prepare --limit 150                     # snapshot + triage + sealed claims
 python scripts\show_queue.py heldout heldout-v1 5         # next papers in queue order
@@ -85,6 +129,12 @@ python scripts\nl_trace.py summary <trace-id>             # read the trace back 
 Budgets (env-overridable, see `paperci/config.py`): $16 hard stop, $3 demo reserve, $0.60 per paper,
 $0.45 builder, 18 turns default; every LLM call is pre-checked against the ledger and reconciled with the
 proxy's `/key/info` spend.
+
+## Results so far (measured, `docs/evidence.md`)
+145 fresh code papers watched -> 55 pass the CPU gate -> 44 with grounded sealed claims. On the 10 held-out papers
+(never used for tuning), the self-improved builder vs the baseline: built 3 -> 5, faithful reproductions 1 -> 2,
+oracle-validated tasks 0 -> 2, agent turns 16.5 -> 11.8, LLM cost per paper $0.24 -> $0.18. Integrity checks
+threw out 3 runs in each arm. Small sample; these are signals, not proof.
 
 ## Limits (honest)
 - CPU-only, minutes-scale. Most fresh ML papers need GPUs, hosted LLM APIs, gated data, or large weights;

@@ -10,7 +10,7 @@ import textwrap
 import time
 from pathlib import Path
 
-from .. import ledger, llm, tracing
+from .. import ledger, live, llm, tracing
 from ..config import (MODELS, REGISTRY_DIR, ROOT, RUN_TIMEOUT_SEC, RUNS_DIR, SANDBOX_IMAGE,
                       SOLVER_ATTEMPT_CAP_USD, SOLVER_MAX_TURNS)
 from ..sandbox import Sandbox, SandboxError
@@ -384,6 +384,8 @@ def solver_attempt(arxiv_id: str, run_label: str, task_dir: Path, snap: dict, at
         cost = ledger.paper_total(arxiv_id, label) - cost0
         tracing.set_attr(s, "reward", reward)
         tracing.set_attr(s, "turns", turns)
+        live.emit("ok" if reward >= 0.999 else "info", f"cheap solver attempt {attempt}: reward {reward} "
+                                                       f"in {turns} turns (${cost:.3f})", indent=1)
         return {"attempt": attempt, "reward": reward, "turns": turns, "status": status, "cost_usd": round(cost, 4)}
 
 

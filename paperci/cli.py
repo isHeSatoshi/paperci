@@ -33,6 +33,61 @@ def _queue(split: str | None, limit: int, ids: list[str] | None, label: str) -> 
     return [r["arxiv_id"] for r in db.q(sql, tuple(args))]
 
 
+def _review(a) -> int:
+    import os
+    import time as _t
+    from . import live, review, sources
+    from .stages.watcher import split_for
+    aid = sources.parse_arxiv_id(a.paper)
+    if a.from_run:
+        print(review.render_terminal(review.build_review(aid, a.from_run, a.anonymize)))
+        p = review.write(aid, a.from_run, a.anonymize)
+        print(f"\n  review: {p}")
+        if a.open:
+            os.startfile(p)  # noqa: S606 - local file the user asked to open
+        return 0
+    live.enable()
+    live.header(f"PaperCI  ·  reviewing arXiv:{aid}")
+    tracing.init(a.label, a.variant)
+    try:
+        if not db.q1("SELECT 1 FROM papers WHERE arxiv_id=?", (aid,)):
+            live.emit("start", "Fetch paper metadata and find its code")
+            p = sources.fetch_paper(aid)
+            if a.repo:
+                p["repo_url"] = sources.find_github(a.repo)
+            if not p["repo_url"]:
+                live.emit("fail", "no public code repository found (pass --repo)")
+                return 2
+            p["split"] = split_for(aid)
+            db.upsert_paper(p)
+            live.emit("ok", f"{p['title'][:90]}")
+        row = db.q1("SELECT title, repo_url FROM papers WHERE arxiv_id=?", (aid,))
+        live.emit("info", f"{row['title'][:100]}  ·  {row['repo_url']}")
+        from .pipeline import prepare, reproduce
+        t0 = _t.time()
+        prep = prepare(aid)
+        if prep.get("triage") != "accept" or not prep.get("n_claims"):
+            live.emit("warn", "stopping: " + ("triage rejected the paper for a CPU sandbox" if prep.get("triage") != "accept"
+                                              else "no verifiable numeric claims in the paper text"))
+            return 0
+        live.header("Reproduce")
+        out = reproduce(aid, a.label, a.variant)
+        live.emit("ok", f"pipeline finished in {(_t.time() - t0) / 60:.1f} min, ${out.get('cost_usd', 0):.3f}")
+        r = review.build_review(aid, a.label, a.anonymize)
+        print(review.render_terminal(r))
+        p = review.write(aid, a.label, a.anonymize)
+        review.write_index()
+        print(f"\n  review: {p}")
+        if a.open:
+            os.startfile(p)  # noqa: S606
+    except ledger.BudgetExceeded as ex:
+        print("BUDGET STOP:", ex)
+        return 3
+    finally:
+        tracing.shutdown()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="paperci")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -47,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     cy = sub.add_parser("cycle", help="one bot tick: watch -> prepare new -> reproduce next N -> dashboard")
     cy.add_argument("--prepare", type=int, default=20); cy.add_argument("--reproduce", type=int, default=1)
     cy.add_argument("--split", default=None); cy.add_argument("--label", default=None)
+    rv = sub.add_parser("review", help="CodeRabbit-style review of one paper: run the pipeline live, write the review")
+    rv.add_argument("paper", help="arXiv id or URL"); rv.add_argument("--repo", help="override the code repository URL")
+    rv.add_argument("--label", default="review"); rv.add_argument("--variant", default=BUILDER_VARIANT)
+    rv.add_argument("--from-run", help="only render the review of an existing run label (no new spend)")
+    rv.add_argument("--anonymize", action="store_true"); rv.add_argument("--open", action="store_true")
+    sub.add_parser("reviews", help="re-render every review + the PR-list style index")
     sub.add_parser("stats"); sub.add_parser("budget")
     d = sub.add_parser("dashboard"); d.add_argument("--public", action="store_true")
     a = ap.parse_args(argv)
@@ -59,6 +120,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "dashboard":
         from .dashboard import render
         print(render(public=a.public)); return 0
+    if a.cmd == "reviews":
+        from . import review
+        print(review.write_index(), review.write_index(anonymize=True)); return 0
+    if a.cmd == "review":
+        return _review(a)
 
     label = getattr(a, "label", None) or a.cmd
     variant = getattr(a, "variant", "-")
@@ -80,8 +146,14 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as ex:
                     print(pid, "prepare failed:", type(ex).__name__, str(ex)[:200], flush=True)
         elif a.cmd == "run":
+            import shutil
+            from pathlib import Path
             from .pipeline import reproduce
             for pid in _queue(a.split, a.limit, a.ids, a.label):
+                free_gb = shutil.disk_usage(Path.home().anchor).free / 1e9
+                if free_gb < 5:
+                    print(f"DISK STOP: only {free_gb:.1f} GB free on the Docker host disk", flush=True)
+                    break
                 try:
                     print(pid, json.dumps(reproduce(pid, a.label, a.variant)), flush=True)
                 except ledger.BudgetExceeded as ex:

@@ -12,7 +12,7 @@ import shlex
 import time
 from pathlib import Path
 
-from .. import db, ledger, llm, tracing
+from .. import db, ledger, live, llm, tracing
 from ..config import (BUILDER_CAP_USD, BUILDER_MAX_TURNS, CMD_TIMEOUT_SEC, INTERNAL_NET, MODELS,
                       PAPER_WALL_SEC, RUN_TIMEOUT_SEC, RUNS_DIR, SANDBOX_IMAGE)
 from ..recovery import Recovery, classify, snippet_for
@@ -132,6 +132,7 @@ class Builder:
             if attempt == 0 and os.environ.get("PAPERCI_CHAOS") == "proxy_down":
                 # Explicit fault injection for demonstrating self-healing; never on by default.
                 _docker("stop", "-t", "1", PROXY_NAME, check=False)
+                live.emit("warn", "CHAOS: fault injected, egress proxy stopped before the repo fetch", indent=1)
                 tracing.log("CHAOS: fault injected, egress proxy stopped before repo fetch", level="warning")
                 db.log_event(self.arxiv_id, self.run_label, "chaos", {"fault": "proxy_down"})
             with tracing.span("tool:fetch_repo", kind="TOOL", attempt=attempt) as s:
@@ -144,12 +145,16 @@ class Builder:
                             f["recovered_by"] = "self-heal+retry"
                     if attempt:
                         tracing.log("fetch recovered on attempt {a} after self-heal", a=attempt + 1)
+                    live.emit("ok", f"fetched {self.snap['full_name']} @ {sha[:10]} inside the sandbox "
+                                    f"({r.output.strip().split()[0] if r.output.strip() else '?'})", indent=1)
                     break
                 cat = classify(r.output, r.exit_code) or "fetch_failed"
                 fid = db.log_failure(self.arxiv_id, self.run_label, "builder.fetch", cat, r.tail(600),
                                      trace_id=tracing.current_trace_id())
+                live.emit("fail", f"repo fetch failed ({cat}): {live.short(r.output.strip().splitlines()[0] if r.output.strip() else '', 80)}", indent=1)
                 healed = ensure_infra()  # self-heal: proxy/network may have died
                 tracing.log("fetch failed ({cat}); self-heal actions: {healed}", level="warning", cat=cat, healed=healed)
+                live.emit("heal", f"self-heal: {', '.join(healed) or 'no infra fault found'}; retrying", indent=1)
                 self.failures.append({"phase": "fetch", "category": cat, "failure_id": fid})
         else:
             raise SandboxError("could not fetch repository tarball")
@@ -179,7 +184,10 @@ class Builder:
             self.actions.append({"type": "shell", "cmd": cmd, "exit": r.exit_code, "timeout": t})
             obs = f"exit={r.exit_code} ({r.seconds}s)\n{r.tail(2500)}"
             cat = classify(r.output, r.exit_code, cmd)
+            live.emit("ok" if r.exit_code == 0 else "warn",
+                      f"turn {self.turn}  $ {live.short(cmd)}  -> exit {r.exit_code} ({r.seconds:.0f}s)", indent=1)
             if cat:
+                live.emit("heal", f"classified failure '{cat}' -> recovery guidance injected", indent=2)
                 fid = db.log_failure(self.arxiv_id, self.run_label, "builder.shell", cat,
                                      snippet_for(r.output, cat), trace_id=tracing.current_trace_id())
                 self.failures.append({"phase": "shell", "category": cat, "failure_id": fid,
@@ -201,19 +209,25 @@ class Builder:
                 return f"error: {e}", False
             self.writes.append({"path": path, "content": content[:20000]})
             self.actions.append({"type": "write", "path": path, "content": content})
+            live.emit("info", f"turn {self.turn}  wrote {path} ({content.count(chr(10)) + 1} lines)", indent=1)
             return f"wrote {len(content)} bytes to {path}", False
         if name == "give_up":
             self.result = {"status": "gave_up", "give_up_category": args.get("category", "other"),
                            "reason": str(args.get("reason", ""))[:1000]}
+            live.emit("warn", f"turn {self.turn}  agent gave up honestly ({self.result['give_up_category']}): "
+                              f"{live.short(self.result['reason'], 140)}", indent=1)
             return "acknowledged", True
         if name == "submit":
             self.submit_attempts += 1
             exists = self.sb.exec("test -s /work/paperci_run.sh && echo yes", timeout=20, quiet=True).output.strip()
             if exists != "yes":
                 return "error: /work/paperci_run.sh does not exist or is empty", False
+            live.emit("start", f"turn {self.turn}  submit -> dry run with the network disconnected", indent=1)
             with tracing.span("tool:dry_run_offline", kind="TOOL", attempt=self.submit_attempts) as s:
                 ok, obs, r = self._dry_run()
                 tracing.set_attr(s, "ok", ok)
+            live.emit("ok" if ok else "fail", f"dry run {'accepted' if ok else 'REJECTED, agent must fix it'} "
+                                              f"({r.seconds:.0f}s)", indent=2)
             if ok:
                 self.result = {"status": "built", "scale": args.get("scale", "reduced"),
                                "scale_notes": str(args.get("scale_notes", ""))[:1500],
@@ -237,6 +251,10 @@ class Builder:
         with tracing.span("stage:builder", kind="AGENT", arxiv_id=self.arxiv_id, variant=self.variant,
                           model=MODELS["builder"], playbook_generation=self.recovery.playbook.generation) as span:
             image = (self.recovery.playbook.image if self.recovery.enabled else "") or SANDBOX_IMAGE
+            if image != SANDBOX_IMAGE and _docker("image", "inspect", image, check=False).returncode != 0:
+                # A learned image only exists where envlearn ran; elsewhere fall back to the base image.
+                tracing.log("learned image {img} not present; using base image", img=image)
+                image = SANDBOX_IMAGE
             tracing.set_attr(span, "sandbox_image", image)
             self.sb = Sandbox.start(f"b-{self.arxiv_id}", network="proxy", image=image, log_dir=self.dir / "cmds")
             try:
@@ -292,6 +310,7 @@ class Builder:
             msg = ("CONTROLLER (mandatory): write /work/paperci_run.sh NOW for the single target you can already compute "
                    "(reduced scale is fine, declare it), test it once, then call submit. Do not explore further.")
         if msg:
+            live.emit("heal", f"turn {self.turn}  learned controller fired: {msg.split(':', 1)[1].strip()[:90]}", indent=1)
             tracing.log("controller milestone fired: {m}", m=msg[:60], turn=self.turn)
             db.log_event(self.arxiv_id, self.run_label, "controller", {"turn": self.turn, "msg": msg[:80]})
             messages.append({"role": "user", "content": msg})

@@ -34,3 +34,5 @@ ledger.local.jsonl
 Thumbs.db
 .idea/
 .vscode/
+
+.playwright-mcp/

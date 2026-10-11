@@ -35,11 +35,12 @@ The judge is frozen; it can only improve the builder. #neatHack
 
 ## Post 5 — before/after on held-out (two neatlogs traces side by side)
 Held-out papers (never used for tuning), same sealed claims:
-v1: 2/5 built, 16.2 avg turns, $0.255/attempt, 0 validated tasks
-v2: 3/5 built, 10.2 avg turns, $0.182/attempt, 1 validated task
-Then I audited my own wins: 2 of the 3 v2 builds were not faithful (one replayed a stored results file,
-one scored a formula the agent wrote itself). The verifier now flags both, and every run was re-judged.
-Faster and cheaper: yes. "More reproductions": only 1 faithful one, same as before. Honest numbers > pretty ones.
+10 held-out papers, judged by the same strict rules:
+v1: 3/10 built, 1 faithful reproduction, 0 validated tasks, 16.5 turns, $0.24/paper
+v2: 5/10 built, 2 faithful reproductions, 2 validated tasks, 11.8 turns, $0.18/paper
+And I audited my own wins first: the agent had learned shortcuts (replaying stored results, scoring its own
+formula instead of the paper's code). The verifier now catches both; 3 runs per arm were thrown out.
+Honest numbers > pretty ones.
 Traces: 294209f0... vs 4e85d604... #neatHack @neatlogs
 
 ## Post 6 — Entire checkpoints + cfo.ai
@@ -48,6 +49,12 @@ the diff. You can see why gen2 exists, not just what changed.
 And the business plan in cfo.ai: COGS ~$0.21/attempt (measured LLM + assumed CPU), $0.91 LLM per validated
 held-out task (n=1, small sample), priced per verified task.
 Repo: https://github.com/isHeSatoshi/paperci #neatHack
+
+## Post 8 — CodeRabbit for papers (docs/img/review.png + docs/img/terminal.png)
+`python -m paperci review <arxiv-id>`
+12 minutes later: a PR-style review of the paper. Every headline claim, what the paper says vs what its
+code actually produced in a fresh sandbox (3 reruns, network off, different model family judging), CI checks
+including anti-cheat, and concrete fixes for the authors. Plus a README badge. #neatHack
 
 ## Post 7 — chaos test (neatlogs trace screenshot)
 I pulled the plug on PaperCI's network proxy mid-run on purpose. The repo fetch failed, the harness noticed,

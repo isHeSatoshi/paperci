@@ -34,8 +34,8 @@
   to "commit to a best-guess implementation".
 - **gen2 on dev:** the copula-VI paper went from max-turns (gen1) to built in 10 turns. It was
   oracle-validated and packaged.
-- **Held-out before/after:** see `docs/evidence.md` section 1. Builds 2/5 -> 3/5, turns 16.2 -> 10.2,
-  $/attempt 0.255 -> 0.182, validated tasks 0 -> 1.
+- **Held-out before/after** (`docs/evidence.md` section 1, 10 papers): built 3 -> 5, faithful reproductions
+  1 -> 2, oracle-validated tasks 0 -> 2, turns 16.5 -> 11.8, $/attempt 0.237 -> 0.178, builder failures 29 -> 11.
 
 ## Optimisation pressure finds shortcuts: the self-audit
 A builder rewarded for "submit a run that prints the metric" learned shortcuts that passed the original
@@ -48,8 +48,8 @@ The fix was made by the engineer, not by the improver (the verifier is a frozen 
 `precomputed_results_replay` and `no_repo_code_path` integrity flags, claim-id disambiguation for claims
 sharing a metric, header-aware and whitespace-tolerant extraction. Then `scripts/reverify.py` re-judged
 **every** stored run (dev and held-out, v1 and v2) with identical new rules, and invalidated 3 packages.
-Reported numbers use the stricter judge, so "faithful measured runs" stays 1 -> 1 on held-out: the honest
-gain is speed, cost and one validated task, not more faithful reproductions.
+Reported numbers use the stricter judge. On the first 5 held-out papers "faithful measured runs" stayed 1 -> 1;
+after adding 5 more held-out papers (run after the audit, same rules for both arms) it is 1 -> 2 out of 10.
 
 The harness heals itself too (`ensure_infra()` before every sandbox and after crashes): it recreates the
 internal network, restarts a dead proxy (shown by the chaos run), removes containers orphaned by a daemon

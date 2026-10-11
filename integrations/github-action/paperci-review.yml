@@ -1,0 +1,56 @@
+# PaperCI for paper authors: drop this file into .github/workflows/ of the repository that accompanies
+# your paper. On every release (or on demand) PaperCI re-runs your paper's headline claims in a fresh,
+# locked-down sandbox and posts a CodeRabbit-style review to the job summary, plus a README badge.
+#
+# Status: template. The same commands run locally (`python -m paperci review <arxiv-id> --repo <url>`);
+# this workflow has not yet been exercised on GitHub-hosted runners.
+#
+# Secrets: LITELLM_API_KEY + LITELLM_BASE_URL (any OpenAI-compatible endpoint), optional NEATLOGS_API_KEY.
+name: PaperCI review
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      arxiv_id:
+        description: "arXiv id of your paper (e.g. 2601.01234)"
+        required: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ARXIV_ID: ${{ github.event.inputs.arxiv_id || vars.PAPERCI_ARXIV_ID }}
+      LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+      LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+      NEATLOGS_API_KEY: ${{ secrets.NEATLOGS_API_KEY }}
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Get PaperCI
+        run: git clone --depth 1 https://github.com/isHeSatoshi/paperci.git paperci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: paperci
+        run: pip install "neatlogs[openai]" openai pydantic requests python-dotenv
+      - name: Build sandbox images (non-root runner image + egress allowlist proxy)
+        working-directory: paperci
+        run: |
+          docker build -t paperci/proxy:latest sandbox/proxy
+          docker build -t paperci/sandbox:base sandbox/runner
+      - name: Review this repository's paper
+        working-directory: paperci
+        run: python -m paperci review "$ARXIV_ID" --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --label ci
+      - name: Post the review
+        if: always()
+        working-directory: paperci
+        run: cat registry/reviews/*-ci.md >> "$GITHUB_STEP_SUMMARY" || echo "no review produced" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paperci-review
+          path: |
+            paperci/registry/reviews/*-ci.*
+            paperci/registry/tasks/
