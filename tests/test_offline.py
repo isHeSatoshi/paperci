@@ -241,6 +241,30 @@ def test_evolve_decisions():
         evolve.ARCHIVE, evolve.ROUND, evolve.CANDS, ops.EVENTS = saved
 
 
+def test_author_preempts_background_job():
+    import sys
+    import tempfile
+    import time
+    from pathlib import Path
+    from paperci import ops
+    saved = (ops.author_waiting, ops._remove_sandboxes, ops.EVENTS, ops.OPS)
+    tmp = Path(tempfile.mkdtemp())
+    ops.EVENTS, ops.OPS = tmp / "e.jsonl", tmp
+    ops._remove_sandboxes = lambda: 0
+    try:
+        ops.author_waiting = lambda: False
+        rc, out = ops._sub([sys.executable, "-c", "print('hi')"], "t", 60, preemptible=True)
+        assert rc == 0 and "hi" in out
+        ops.author_waiting = lambda: True
+        t0 = time.time()
+        rc, _ = ops._sub([sys.executable, "-c", "import time; time.sleep(60)"], "t", 120, preemptible=True)
+        assert rc == ops.PREEMPTED and time.time() - t0 < 20
+        rc, _ = ops._sub([sys.executable, "-c", "import time; time.sleep(1)"], "t", 60)  # not preemptible
+        assert rc == 0
+    finally:
+        ops.author_waiting, ops._remove_sandboxes, ops.EVENTS, ops.OPS = saved
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

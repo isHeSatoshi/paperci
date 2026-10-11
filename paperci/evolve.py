@@ -420,12 +420,15 @@ def step() -> dict:
         item["status"] = "failed"
         _save(ROUND, rnd)
         return {"status": "item failed twice", "item": item}
+    item["running"] = True
     _save(ROUND, rnd)
-    label = f"evo-{rnd['id']}-{'inc' if item['who'] == 'incumbent' else item['who'].rsplit('-', 1)[-1]}"
+    label = (f"evo-{rnd['id']}-{'inc' if item['who'] == 'incumbent' else item['who'].rsplit('-', 1)[-1]}"
+             + (f"-r{item['restarts']}" if item.get("restarts") else ""))
     log = ops.OPS / f"evolve-{rnd['id']}-{len(rnd['queue']) - len(pending)}.log"
+    # Same process group as this step, so preempting the step (ops._sub) also stops the evaluation run.
     p = subprocess.Popen([sys.executable, "-u", "-m", "paperci.evolve", "eval", item["who"], item["paper"], label],
                          cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-                         errors="replace", env=_env_for(item["who"], label, rnd["id"]), start_new_session=os.name != "nt")
+                         errors="replace", env=_env_for(item["who"], label, rnd["id"]))
     try:
         out, _ = p.communicate(timeout=EVAL_TIMEOUT)
     except subprocess.TimeoutExpired:
@@ -438,13 +441,24 @@ def step() -> dict:
     res = fitness(item["paper"], label)
     for q in rnd["queue"]:
         if q["who"] == item["who"] and q["paper"] == item["paper"]:
-            q.update(status="done" if res else ("pending" if q["attempts"] < 2 else "failed"), result=res)
+            q.update(status="done" if res else ("pending" if q["attempts"] < 2 else "failed"), result=res, running=False)
     if res and item["who"] == "incumbent":
         a = archive()
         a["baselines"].setdefault(rnd["incumbent"]["key"], {})[item["paper"]] = res
         _save(ARCHIVE, a)
     _save(ROUND, rnd)
     return {"status": "ran", "who": item["who"], "paper": item["paper"], "result": res}
+
+
+def release() -> None:
+    """An evaluation run interrupted for an author does not count as an attempt; it is redone from the start
+    under a fresh label so no half-finished stage state is reused."""
+    rnd = _load(ROUND, {})
+    for q in rnd.get("queue", []):
+        if q.get("running"):
+            q.update(running=False, attempts=max(0, q["attempts"] - 1), restarts=q.get("restarts", 0) + 1)
+    if rnd:
+        _save(ROUND, rnd)
 
 
 def _void(rnd: dict, why: str) -> dict:

@@ -161,7 +161,12 @@ def run_due(kind: str) -> None:
             _save(STATE, st)
             _sub([sys.executable, "-u", "-m", "paperci.ops", "nightly"], "nightly", LIMITS["nightly"])
         elif kind == "evolve":
-            rc, out = _sub([sys.executable, "-u", "-m", "paperci.evolve", "step"], "evolve", LIMITS["evolve"])
+            rc, out = _sub([sys.executable, "-u", "-m", "paperci.evolve", "step"], "evolve", LIMITS["evolve"],
+                           preemptible=True)
+            if rc == PREEMPTED:
+                from . import evolve
+                evolve.release()  # the interrupted benchmark run is retried later and does not count as an attempt
+                return
             # Poison guard: a step that keeps crashing voids the round instead of blocking the autopilot.
             st = _load(STATE)
             st["evolve_fail"] = 0 if rc == 0 else st.get("evolve_fail", 0) + 1
@@ -179,21 +184,51 @@ def run_due(kind: str) -> None:
         beat()
 
 
-def _sub(cmd: list[str], name: str, timeout: int = LIMITS["cycle"]) -> tuple[int, str]:
+PREEMPTED = 130
+
+
+def author_waiting() -> bool:
+    from . import db
+    return bool(db.q1("SELECT 1 FROM web_jobs WHERE status IN ('queued_prepare','queued_run') LIMIT 1"))
+
+
+def _remove_sandboxes() -> int:
+    """Called only right after the worker's own job was killed, so every PaperCI sandbox left is that job's."""
+    from .sandbox import PROXY_NAME
+    rc, out = _sh("docker", "ps", "--filter", "label=paperci=1", "--format", "{{.ID}} {{.Names}}")
+    ids = [ln.split()[0] for ln in out.splitlines() if rc == 0 and len(ln.split()) == 2 and ln.split()[1] != PROXY_NAME]
+    if ids:
+        _sh("docker", "rm", "-f", *ids, timeout=120)
+    return len(ids)
+
+
+def _sub(cmd: list[str], name: str, timeout: int = LIMITS["cycle"], preemptible: bool = False) -> tuple[int, str]:
+    """Run a background job. A preemptible job is stopped within seconds when an author submits, so authors never
+    wait behind autopilot or evolution work (rc PREEMPTED)."""
     log = OPS / f"{name}-{time.strftime('%Y%m%d-%H%M', _local())}.log"
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_END_USER": "autopilot"}
-    p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-                         errors="replace", env=env, start_new_session=os.name != "nt")
-    try:
-        out, _ = p.communicate(timeout=timeout)
-        rc = p.returncode
-    except subprocess.TimeoutExpired:
-        kill_tree(p)
-        out, rc = (p.communicate()[0] or ""), 124
-        event("incident", f"Autopilot job '{name}' exceeded its {timeout // 60} min limit and was killed; "
-                          "the schedule moved on", healed=True, component="worker")
-    log.write_text(out, encoding="utf-8")
-    return rc, out
+    t0 = time.time()
+    with open(log, "w", encoding="utf-8") as f:  # a file, not a pipe: polling must never block on a full pipe
+        p = subprocess.Popen(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT, env=env, start_new_session=os.name != "nt")
+        rc = None
+        while rc is None:
+            try:
+                rc = p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                if time.time() - t0 > timeout:
+                    kill_tree(p)
+                    p.wait()
+                    rc = 124
+                    event("incident", f"Autopilot job '{name}' exceeded its {timeout // 60} min limit and was killed; "
+                                      "the schedule moved on", healed=True, component="worker")
+                elif preemptible and author_waiting():
+                    kill_tree(p)
+                    p.wait()
+                    rc = PREEMPTED
+                    n = _remove_sandboxes()
+                    event("cycle", f"Paused background job '{name}' after {int(time.time() - t0) // 60} min because an "
+                                   f"author submitted a paper (removed {n} sandbox(es)); it resumes afterwards")
+    return rc, log.read_text(encoding="utf-8", errors="replace")
 
 
 def kill_tree(p: subprocess.Popen) -> None:
@@ -214,7 +249,13 @@ def cycle() -> dict:
     label = "live-" + time.strftime("%Y%m%d", _local())
     event("cycle", "Autopilot cycle started: checking arXiv for new papers with code")
     rc, out = _sub([sys.executable, "-u", "-m", "paperci", "cycle", "--prepare", os.getenv("PAPERCI_CYCLE_PREPARE", "6"),
-                    "--reproduce", os.getenv("PAPERCI_CYCLE_REPRODUCE", "1"), "--label", label, "--fresh"], "cycle")
+                    "--reproduce", os.getenv("PAPERCI_CYCLE_REPRODUCE", "1"), "--label", label, "--fresh"], "cycle",
+                   preemptible=True)
+    if rc == PREEMPTED:
+        st = _load(STATE)
+        st["last_cycle"] = 0  # run again as soon as the author's job is done
+        _save(STATE, st)
+        return {"preempted": True}
     w = re.search(r"watch: (\{.*\})", out)
     found = json.loads(w.group(1)) if w else {}
     prepared = re.findall(r"^prepare (\S+) (\{.*\})$", out, re.M)
