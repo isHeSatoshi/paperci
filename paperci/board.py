@@ -202,8 +202,8 @@ Held-out papers never feed the learner.</div><ul class=rules>{rules}</ul></div>
 <div class=box><h4>Who heals the healer &middot; drills against the self-healing layer</h4>{hdrill_rows}
 <div class=muted style="margin-top:8px">Layers: systemd restarts the agent if it dies; the watchdog restarts it if it hangs (worker
 heartbeat + per-job deadlines); a plain-shell fallback runs if the watchdog itself breaks; bad deploys roll back
-automatically; restarts are rate-limited and escalate to a rollback instead of looping; AWS reboots the VM if
-it stops responding.</div></div></div></div>
+automatically; restarts are rate-limited and escalate to a rollback instead of looping; the kernel is set to
+reboot on a panic or lockup (configured, not drilled).</div></div></div></div>
 <div class=foot>PaperCI &middot; generated {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())} &middot; traces by neatlogs &middot; sessions by Entire</div></div>
 <script>setTimeout(()=>location.reload(),30000)</script>"""
     _cache.update(ts=time.time(), html=body)

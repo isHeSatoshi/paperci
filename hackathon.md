@@ -148,6 +148,19 @@
   Trade-offs, stated on purpose: the builder/verifier model-family split is off, and the Hugging Face judge is
   also a GLM model, so agreement may be inflated; earlier Claude-based results are not comparable.
 
+### 2026-10-12 (Mon) 01:00 IST: learning from community logbooks, an improvement push overnight
+- Logbook learning (`paperci/logbook_learn.py`): the improver reads methods notes from high-quality community
+  logbooks of papers outside the ICML candidate set (never bench or eval) next to PaperCI's own failure
+  clusters, and proposes general rules. Leak gate + the usual static gates, then it competes as a third
+  candidate in the evolution round; at most one playbook is adopted per round. First dry run: 4 rules from 8
+  logbooks passed every gate.
+- Evolution now learns from dev and benchmark failures (never held-out or ICML eval runs). Fast mode until
+  18:00 IST (`PAPERCI_EVOLVE_FAST_UNTIL`): rounds follow each other after 30 min instead of once per night;
+  afterwards it returns to nightly by itself. Evolution and ICML eval steps alternate so neither starves.
+- A restart (deploy or crash) now releases interrupted background runs, so they are redone without losing an
+  attempt. GitHub token added on the server (read-only, public repos): 5,000 requests/hour instead of 60.
+- README rewritten in plain language with two memes; new TECHNICAL_WRITEUP.md.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).

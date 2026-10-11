@@ -1,199 +1,184 @@
-# PaperCI: CodeRabbit for research papers
+# PaperCI
 
-Every pull request gets a bot that runs the tests and reviews the change. Research papers get nothing: most
-papers' code is never re-run by anyone. **PaperCI reviews a paper the way CI reviews a PR.** It doesn't lint the
-code. It rebuilds the paper's environment from scratch in a fresh sandbox, re-runs the code, and checks
-**every headline claim in the paper against what the code actually produces.**
+**CI for research papers. It reruns the code and checks the numbers.**
 
-### It is running right now
+_Built for neatHack 2026. Independent project; not affiliated with Hugging Face, arXiv or any paper's authors._
 
-Until 2026-10-16 23:59 IST, PaperCI runs by itself on AWS. **Live board: https://paperci.vercel.app/board**
-(anonymized). Every 90 minutes it pulls new arXiv papers with code, triages them, seals their claims and
-reproduces the freshest one. Every night it learns new recovery rules from the day's failures (gated; held-out
-papers never feed it), runs a chaos drill against itself, and writes a digest. A watchdog repairs Docker, the
-egress proxy, orphaned sandboxes, disk pressure and the web app on its own, and logs each repair as an
-incident. Details: [docs/cloud.md](docs/cloud.md).
+**It's running right now.** [Live board](https://paperci.vercel.app/board) ·
+[ICML 2026 results, by paper](https://paperci.vercel.app/icml) · [Technical write-up](TECHNICAL_WRITEUP.md)
 
-Reviews now end like a CodeRabbit PR review, with **verified suggested changes**. These are the exact repo patch
-the agent needed, a `reproduce.sh` entry point and a pinned `requirements.lock.txt` of the environment that
-worked. They are verified because PaperCI applied them and re-ran the paper's code offline in fresh
-containers. Each comes as a downloadable `paperci.patch` (`git apply paperci.patch`).
+![Reading "code available" in the abstract vs a bot that reruns it with the network off](docs/img/memes/code-available.png)
 
-### For authors: the web app (an agent you talk to, not a form)
+Every pull request gets a bot that runs the tests. Papers get nothing. "Code available" usually means "a repo
+exists"; whether it runs, and whether it prints the numbers in the paper, nobody checks.
 
-```
-python -m paperci.web        # http://127.0.0.1:8000
-```
+PaperCI checks. It reads the paper, writes down the headline numbers and seals them, builds the repo from
+scratch in a locked sandbox, reruns it with the network off, and compares what the code prints with what the
+paper claims. The output reads like a code review: a claims-vs-measured table, the patch it needed, and a
+`reproduce.sh` that works.
 
-1. **Submit**: your email, then an arXiv link or your paper file (PDF, LaTeX `.tex` or source `.zip`/`.tar.gz`,
-   Word `.docx`, HTML, Markdown, text) and the GitHub repo (found automatically if the paper links it).
-2. **The agent reads and talks to you.** It seals your headline claims, inspects the repo, and opens a chat:
-   what it found, its plan, and only the questions that would change the plan (which claim matters most, the
-   command that produces a number, a reachable mirror for data hosted on Drive/Dropbox/a university server).
-   If you don't answer, it starts with its own plan.
-3. **It works and narrates.** Progress, the hosts it connected to (GitHub, PyPI, Hugging Face, ...; blocked ones
-   in red), and plain-language updates ("Cloned your repo...", "I've read enough; switching to running it",
-   "Your code ran end to end with the network off"). Your guidance goes to the engineer agent with any sealed
-   numbers redacted.
-4. **It comes back when it's stuck.** If data isn't released, a credential is needed, or it can't find the
-   entry point, it asks you exactly that (chat + email), then retries with your answer (up to 3 attempts).
-5. **Review + follow-up.** A claim-by-claim review in the page, a badge, a self-contained environment, and
-   an offer to watch your repo and re-verify on every new commit.
+### Latest changes
 
-![web app](docs/img/web-landing.png)
-![agent conversation: it got stuck, asked the author, retried with the answer, then offered to watch the repo](docs/img/web-chat.png)
-![progress, connections and the watch offer](docs/img/web-job.png)
+**2026-10-12**
 
-(Screenshots use the page's `?redact=1` mode, which hides the paper's identity; the real page is private to the author.)
+- **External check against the community.** 116 ICML 2026 papers where independent teams in Hugging Face's
+  [Open Reproductions](https://huggingface.co/datasets/ICML-2026-agent-repro/verdicts) agreed on the outcome are
+  rerun blind. The community verdict is the answer key; no agent ever sees it. Results are public by paper name
+  at [/icml](https://paperci.vercel.app/icml).
+- **Learning from other people's logbooks.** The nightly improver now reads methods notes from community
+  logbooks of *other* papers and turns them into recovery rules for its own failures. They are tested like
+  any other change before they are adopted. [How](TECHNICAL_WRITEUP.md#learning-from-community-logbooks).
+- **New models.** Builder: DeepSeek V4.1 Flash. Verifier and everything always-on: GLM-5.3-Flash. Still two
+  different model families.
+- Fixed: GitHub rate limits were being recorded as "repo unavailable", which rejected 24 good papers.
 
-### From the terminal
+**2026-10-11**
+
+- Evolution rounds: the agent proposes changes to its own playbook and control policy, runs them on a fixed
+  benchmark against the current version, and keeps a change only if it scores higher.
+- Web app with a concierge agent for authors; self-healing layers on the server, drilled nightly.
+
+## Quick start
+
+Python 3.12, Docker running.
 
 ```
-python -m paperci review <arxiv-id-or-url>        # whole pipeline, live, ends in a review
-python -m paperci review --file paper.pdf --repo https://github.com/you/code   # any academic file format
-python -m paperci review <arxiv-id> --from-run L  # re-render the review of an earlier run (no spend)
-python -m paperci reviews                         # PR-list style index of every review
+uv venv .venv
+uv pip install --python .venv/bin/python "neatlogs[openai]" openai pydantic requests python-dotenv fastapi uvicorn python-multipart
+cp .env.example .env        # NEATLOGS_API_KEY, plus LITELLM_API_KEY or FACTORY_API_KEY
+docker build -t paperci/proxy:latest sandbox/proxy
+docker build -t paperci/sandbox:base sandbox/runner   # Windows: powershell -File scripts\build_images.ps1
+python scripts/test_sandbox.py         # checks: non-root, allowlist, offline mode, no secrets
+python tests/test_offline.py           # 15 offline checks, no API keys needed
 ```
 
-A real run (12 minutes, $0.15, paper identity hidden). Note turn 5: the learned controller forces the agent
-to stop reading and run code; the review at the end is honest that the numbers differ at reduced scale.
-
-![paperci review, live](docs/img/terminal.png)
-
-The output is a review page like a CodeRabbit PR comment (`registry/reviews/<paper>.html` + `.md` + a README
-badge `.svg`): a pipeline strip, a walkthrough of how the environment was built, a **claims-vs-measured table**
-(paper value, measured mean ± sd over offline reruns, calibrated tolerance, status), CI-style checks
-(sandbox, sealing, offline reruns, anti-cheat, oracle), **actionable suggestions for the authors**, and a
-"reproduce it yourself" section with the exact script and every command the agent ran.
-
-![PaperCI review (anonymized)](docs/img/review.png)
-
-Browse every review PaperCI has produced (anonymized, open the HTML locally or via GitHub Pages):
-[`docs/reviews/index.html`](docs/reviews/index.html).
-
-Why you can trust a PaperCI review:
-- **The agent that builds never sees the numbers it has to hit.** Claims are extracted from the paper text with
-  verbatim quotes and sealed (sha256) before the build starts.
-- **A different model family judges.** The builder is Claude; the verifier is Amazon Nova, which reruns the
-  script in fresh containers with the network disconnected and reads only the output files.
-- **It catches shortcuts, including its own agent's.** Hardcoded answers, copied result files, replayed
-  precomputed results, and run scripts that never call the repo's code all fail the review
-  ([a real case](docs/img/review-caught.png): the run replayed stored results, so no claim was trusted).
-- **Every reproduction becomes a task.** A run that passes is packaged as a Harbor task whose oracle is
-  validated by replay, so fresh papers become fresh, verifiable agent benchmarks.
-
-It also **improves itself and heals itself**: failures in its own neatlogs traces become recovery rules, an
-enforced control policy and a better sandbox image (gated, measured on held-out papers it never tuned on);
-infrastructure faults (dead proxy, crashed containers) are repaired and retried automatically.
-
-For authors: `integrations/github-action/paperci-review.yml` runs the same review on every release of the
-paper's repo and posts it to the job summary with a badge (template; see the file header).
-
-**Where this goes.** Today PaperCI handles papers whose claims can be re-derived by deterministic code on a
-CPU in minutes. The same loop (seal the claims, build the environment, rerun, verify independently) extends
-to GPU workloads and then to papers whose evidence comes from simulators: robotics, physics, chemistry. As
-simulation environments get better, the bottleneck in AI evaluation shifts from writing benchmarks to
-verifying them, and PaperCI turns each new paper into one.
-
-Built for neatHack 2026 with **neatlogs** (every LLM call and stage traced), **Entire** (build sessions
-captured as checkpoints on commits) and **cfo.ai** (business plan, see `docs/unit-economics.md`).
-
-## What happens to one paper
+Review one paper:
 
 ```
-watcher (arXiv API + HF Daily Papers) ─> triage gate (rules + nova-micro)
-  ─> sealed claim extraction (nova-pro, grounded quotes, sha256-sealed)
-  ─> builder agent (claude-sonnet-4.6, own tool loop, sandbox tools; never sees claim values)
-       └─ offline dry run on submit (network disconnected)
-  ─> independent verifier (fresh container, --network none, reads artifacts only;
-       deterministic extraction first, nova-pro only for ambiguous logs, quote must exist)
-  ─> robustness (re-runs with other seeds, tolerance calibration)
-  ─> verdict: verified | falsified-candidate | toy-scale | inconclusive | blocked-infra
-  ─> packager (Harbor task: instruction.md, task.toml, environment/Dockerfile, solution/, tests/)
-  ─> oracle check (replay builder's steps in a fresh env, hidden test must give reward 1)
-  ─> trainability filter (claude-haiku solver, k attempts; keep "solved sometimes")
-  ─> registry + dashboard (funnel, cost per stage, cost per validated task)
+python -m paperci review 2503.01072                 # arXiv id or URL, live progress, ends in a review page
+python -m paperci review --file paper.pdf --repo https://github.com/you/code
 ```
 
-Self-improvement loop (`python -m paperci improve`, `python -m paperci envlearn`):
+Or the web app, where an agent talks to you while it works (`python -m paperci.web`, then
+http://127.0.0.1:8000). The hosted one at [paperci.vercel.app](https://paperci.vercel.app) needs an invite code
+for now, because every run costs real compute.
 
+## How it works
+
+```mermaid
+flowchart LR
+    P[Paper] --> C[Claims extracted + sealed]
+    R[Repo] --> B[Builder agent, sandbox with allowlist proxy]
+    C -. metric names only .-> B
+    B --> V[Verifier, different model family, network off, fresh containers]
+    C --> V
+    V --> D[Verdict + review + patch + reproduce.sh]
+    D --> T[Harbor task, oracle-checked]
 ```
-neatlogs-traced runs ─> failure taxonomy rebuilt from raw sandbox logs
-  ─> improver agent proposes playbook rules + controller knobs
-  ─> deterministic gates (regex recall/precision on real failures, integrity ban-list,
-     stale-knowledge check vs current allowlist, cost projection vs cap)
-  ─> new playbook generation (data/playbook.json, history in data/playbook_history/)
-  ─> envlearn: packages installed in >= 2 papers are promoted into the sandbox image (install-gated)
-  ─> measured on the held-out split, which the improver never sees
-```
 
-Frozen by design (the improver cannot touch these): verifier, claim sealing, tolerances, held-out split.
+- **The builder never sees the numbers.** Claims are pulled from the paper with verbatim quotes and sealed
+  (sha256) before the build starts. The builder gets metric names only; matching numbers in the README are
+  redacted.
+- **Someone else grades it.** A verifier from a different model family reruns the script in fresh containers
+  with `--network none` and reads only the output files.
+- **It catches shortcuts, including its own.** Hardcoded values, copied result files, replayed stored results
+  and scripts that never call the repo's code all fail the review.
+- **Every reproduction becomes a task.** A passing run is packaged as a Harbor task and only kept if its own
+  oracle replays to reward 1.
 
-## Safety and integrity
-- Third-party code only runs in Docker: uid 1000, `--cap-drop ALL`, `no-new-privileges`, CPU/mem/pid limits,
-  no host mounts, no credentials. Build phase: `--internal` network whose only exit is a tinyproxy
-  allowlist (PyPI, PyTorch wheels, GitHub, Hugging Face, Zenodo, UCI, OpenML). Verification: `--network none`.
-- Repos are fetched as tarballs inside the sandbox; artifacts come out as tar streams, extracted file by file
-  with path checks.
-- Claims are sealed (sha256) before any build; the builder sees metric names only, README numbers matching
-  sealed values are redacted, unseal is permission-checked and logged.
-- Anti-cheat: sealed values searched in everything the builder authored (script, writes, commands, repo diff);
-  output files hashed against the pristine repo (copied results); proxy logs list refused hosts.
-- Integrity checks added after auditing our own held-out results (each one caught a real case):
-  `precomputed_results_replay` (the run script loads stored results / finishes in seconds while reading
-  result-like artifacts), `no_repo_code_path` (the run script never touches a repo module, e.g. a formula the
-  builder wrote itself), claim-id tagged evidence for claims sharing one metric name, header-aware extraction
-  (numbers in a `--- c2: ... 6000 steps ---` header are settings, not results), and whitespace-tolerant
-  extraction specs (multi-line evidence). Any integrity flag blocks packaging; `scripts/reverify.py` re-judges
-  every stored run with the current rules.
-- A packaged task whose own oracle does not earn reward 1 is moved to `registry/rejected/`. Container deaths
-  (daemon crash, exit 135/255) are retried as infra failures, never counted as task failures.
-- Repo text is treated as untrusted (prompt-injection warnings in every system prompt).
-- Verdicts about named papers are not published. `runs/`, `registry/` and reports are git-ignored; the public
-  dashboard is anonymized.
+![Builder: reproduced the paper in 4 seconds. Verifier: precomputed_results_replay](docs/img/memes/caught.png)
 
-## Setup (Windows, PowerShell; Linux/macOS analogous)
-1. Python 3.12 venv: `uv venv .venv; uv pip install --python .venv\Scripts\python.exe "neatlogs[openai]" openai pydantic requests python-dotenv`
-2. `.env` (git-ignored) with `NEATLOGS_API_KEY` (project key), `LITELLM_API_KEY`, `LITELLM_BASE_URL`, optional `CRUSTDATA_API_KEY`.
-3. Docker Desktop running. Build images: `powershell -File scripts\build_images.ps1 -Tag base`
-4. Self-test isolation: `python scripts\test_sandbox.py` (checks non-root, allowlist, offline mode, no secrets).
-5. Offline unit checks: `python tests\test_offline.py`.
+That one is real: on our held-out set the run script loaded stored results and finished in seconds. The
+`precomputed_results_replay` check exists because of it ([screenshot](docs/img/review-caught.png)).
 
-## Run
-```
-python -m paperci review <arxiv-id> [--anonymize] [--open] # one paper end to end -> review page
-python -m paperci reviews                                 # re-render all reviews + index
-python -m paperci watch                                   # fetch fresh code papers
-python -m paperci prepare --limit 150                     # snapshot + triage + sealed claims
-python scripts\show_queue.py heldout heldout-v1 5         # next papers in queue order
-python -m paperci run --label heldout-v1 --variant v1 --ids <ids...>   # baseline builder
-python -m paperci improve --labels dev-v1 --apply         # learn playbook generation N+1 from dev traces
-python -m paperci envlearn --apply                        # promote recurring packages into the image
-python -m paperci run --label heldout-v2 --variant v2 --ids <same ids>  # improved builder
-python -m paperci stats | budget | dashboard [--public]
-python scripts\nl_trace.py summary <trace-id>             # read the trace back from neatlogs (CLI)
-```
-Budgets (env-overridable, see `paperci/config.py`): $16 hard stop, $3 demo reserve, $0.60 per paper,
-$0.45 builder, 18 turns default; every LLM call is pre-checked against the ledger and reconciled with the
-proxy's `/key/info` spend.
+## Results
 
-## Results so far (measured, `docs/evidence.md`)
-145 fresh code papers watched -> 55 pass the CPU gate -> 44 with grounded sealed claims. On the 10 held-out papers
-(never used for tuning), the self-improved builder vs the baseline: built 3 -> 5, faithful reproductions 1 -> 2,
-oracle-validated tasks 0 -> 2, agent turns 16.5 -> 11.8, LLM cost per paper $0.24 -> $0.18. Integrity checks
-threw out 3 runs in each arm. Small sample; these are signals, not proof.
+### Held-out papers (before vs after self-improvement)
 
-## Limits (honest)
-- CPU-only, minutes-scale. Most fresh ML papers need GPUs, hosted LLM APIs, gated data, or large weights;
-  they are rejected at triage or end as `blocked-infra`. The funnel shows this; it is the main limitation.
-- Claims come from text (arXiv HTML / HF markdown). Strict grounding drops table numbers whose quotes do not
-  survive HTML stripping.
-- Reduced-scale runs are `toy-scale` and never count as verified; packaged tasks then reference our own
-  offline measurement, not the paper's number.
-- "Contamination-free" is partial: papers and READMEs are public. The hidden verifier uses our measurement.
-- Trainability uses k=2 cheap-solver attempts: a coarse signal.
-- Long traces (>10 min) were once observed to fail neatlogs finalization (DLQ); see docs/evidence.md.
+10 fresh arXiv papers taken in queue order, never used for tuning. Same papers, same sealed claims. These runs
+used the earlier models (Claude Sonnet 4.6 builder, Amazon Nova Pro verifier).
 
-## Repo map
-`paperci/` pipeline (stages in `paperci/stages/`), `sandbox/` images, `scripts/` ops helpers, `tests/`,
-`docs/` (landscape, unit economics, evidence, demo script, posts), `data/playbook.json` (learned policy).
+| Metric | Before | After |
+| --- | --: | --: |
+| Built and ran offline | 3/10 | **5/10** |
+| Faithful reproductions | 1 | **2** |
+| Claims within tolerance (n ≥ 2 reruns) | 0 | **2** |
+| Oracle-validated tasks | 0 | **2** |
+| Builder turns per paper | 16.5 | **11.8** |
+| LLM cost per paper | $0.24 | **$0.18** |
+| Runs thrown out by integrity checks | 3 | 3 |
+
+Small sample, so read these as signals, not proof. Per-paper rows and trace ids are in
+[docs/evidence.md](docs/evidence.md).
+
+### ICML 2026, against the Hugging Face community
+
+The answer key is papers where at least two independent medium/high-quality logbooks agreed (75% or more)
+that the paper was verified or falsified: 116 papers (47 verified, 69 falsified). PaperCI runs them blind on a
+CPU, and the results come in as runs finish. Live numbers and every paper by name:
+**[paperci.vercel.app/icml](https://paperci.vercel.app/icml)**.
+
+Two caveats up front. The community had GPUs and PaperCI does not, so it will often say "no decision". And the
+community labels were graded by GLM-5.2, the same model family as our verifier, so agreement may be inflated.
+
+### What it costs
+
+About $0.04 to $0.20 of LLM per paper, depending on the model. The front half (finding the code, triage,
+sealing claims) is about $0.01. See [docs/unit-economics.md](docs/unit-economics.md).
+
+## It improves itself (carefully)
+
+Every night it reads its own failures from the neatlogs traces, proposes new recovery rules, a rewritten
+control policy, and rules learned from community logbooks. Each candidate is run for real on a fixed benchmark
+against the current version.
+
+- Adopted only if it scores higher, with no regression and no integrity flag.
+- Code changes (the control policy) also wait for a human `approve`.
+- Every adopted change is re-checked on live papers and rolled back automatically if they get worse.
+- The verifier, sealed claims, tolerances, cost ledger and held-out split are fingerprinted. If anything
+  touches them, the round is void.
+
+Details: [docs/evolution.md](docs/evolution.md).
+
+## It heals itself
+
+On the server, a watchdog repairs Docker, the egress proxy, orphaned sandboxes, disk pressure and the web app,
+and logs each repair as an incident on the board. Something also watches the watchdog. Bad deploys roll back on
+their own, and it breaks itself on purpose every night (chaos drills) to check that all of this still works.
+Details: [docs/cloud.md](docs/cloud.md).
+
+## Safety
+
+- Third-party code only runs in Docker: uid 1000, `--cap-drop ALL`, `no-new-privileges`, CPU/memory/pid limits,
+  no host mounts, no credentials. Setup network goes through an allowlist proxy (PyPI, PyTorch wheels, GitHub,
+  Hugging Face, Zenodo, UCI, OpenML); the scored run has no network.
+- Repo text is untrusted: every system prompt carries a prompt-injection warning.
+- Live arXiv papers and author submissions are anonymized on the public board. ICML 2026 papers are named,
+  because they and their community verdicts are already public.
+- Secrets live in `.env` (git-ignored), are scanned for before every push, and are redacted from Entire
+  checkpoints.
+
+## Limits
+
+- CPU only, minutes-scale. Most fresh ML papers need GPUs, hosted LLM APIs, gated data or large weights; they
+  are rejected at triage or end as `blocked-infra`. This is the biggest limitation.
+- Claims come from paper text. Numbers that only live in figures are missed.
+- A reduced-scale run is reported as `toy-scale` and never counts as verified.
+- The trainability check uses 2 cheap-solver attempts, so it is coarse.
+
+## Docs
+
+- [Technical write-up](TECHNICAL_WRITEUP.md): how it was built, what broke, trade-offs
+- [ICML eval](docs/icml-eval.md): reference labels, protocol, biases
+- [Evolution](docs/evolution.md): rounds, gates, canary, approvals
+- [Cloud and self-healing](docs/cloud.md)
+- [Evidence](docs/evidence.md): held-out numbers with trace ids
+- [Unit economics](docs/unit-economics.md) · [Landscape](docs/landscape.md) · [neatlogs feedback](docs/neatlogs-feedback.md)
+- [Earlier example reviews](docs/reviews/index.html) (anonymized)
+
+## Built with
+
+**neatlogs** traces every LLM call and stage, and the improver learns from those traces. **Entire** captures
+the build sessions as checkpoints on commits. **cfo.ai** was used for the business plan
+([unit economics](docs/unit-economics.md)). LLMs: DeepSeek V4.1 Flash and GLM-5.3-Flash through the Factory API;
+earlier runs used Claude and Amazon Nova through LiteLLM.
