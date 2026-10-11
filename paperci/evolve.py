@@ -200,6 +200,17 @@ def meta_propose(a: dict, rid: str) -> dict | None:
 
 
 # ---------------------------------------------------------------- proposals
+def learning_evidence(labels: list[str], bench: list[str]) -> dict:
+    """Failures the improver may learn from: dev papers (live autopilot papers are dev too) and the benchmark
+    papers. Never held-out papers and never ICML eval papers, so both scores stay blind."""
+    out: dict[str, list[dict]] = {k: list(xs) for k, xs in _evidence(labels, only_split="dev").items()}
+    for k, xs in _evidence([lb for lb in labels if lb.startswith("evo-")], only_split="icml").items():
+        keep = [x for x in xs if x["paper"] in bench]
+        if keep:
+            out.setdefault(k, []).extend(keep)
+    return out
+
+
 def _labels() -> list[str]:
     return [r["run_label"] for r in db.q("SELECT DISTINCT run_label FROM stages WHERE stage='build'")]
 
@@ -299,15 +310,18 @@ def start() -> dict:
     _save(ARCHIVE, a)
     if cur and cur.get("status") not in ("done", None):
         return {"status": "round already in progress", "round": cur["id"]}
-    if cur and time.time() - cur.get("started", 0) < 20 * 3600 and os.getenv("PAPERCI_EVOLVE_FORCE") != "1":
-        return {"status": "a round already ran in the last 20 h (one budget per night)", "round": cur["id"]}
+    if cur and time.time() - cur.get("started", 0) < min_gap_s() and os.getenv("PAPERCI_EVOLVE_FORCE") != "1":
+        return {"status": f"a round already ran in the last {min_gap_s() / 3600:.1f} h", "round": cur["id"]}
+    if cur:
+        cur["tried"] = time.time()
+        _save(ROUND, cur)
     rid = time.strftime("%Y%m%d-%H%M", ops._local())
     bench = [p for p in BENCH if db.q1("SELECT 1 FROM sealed_claims WHERE arxiv_id=?", (p,))]
     if not bench:
         ops.event("learn", "Evolution round skipped: no benchmark paper has sealed claims on this host")
         return {"status": "no bench"}
     labels = _labels()
-    clusters = _evidence(labels, only_split="dev")
+    clusters = learning_evidence(labels, bench)
     if not clusters:
         ops.event("learn", "Evolution round skipped: no dev-split failures to learn from yet")
         return {"status": "no evidence"}
@@ -332,6 +346,14 @@ def start() -> dict:
         except Exception as ex:
             src, why_b = None, f"proposal failed: {type(ex).__name__}: {str(ex)[:160]}"
         cands.append(_register(a, rid, "policy", strat, src, why_b))
+        try:
+            from . import logbook_learn
+            lpb, why_c, srcs = logbook_learn.propose(clusters, load_playbook(), rid)
+        except Exception as ex:
+            lpb, why_c, srcs = None, f"proposal failed: {type(ex).__name__}: {str(ex)[:160]}", []
+        lc = _register(a, rid, "playbook", strat, lpb.model_dump_json(indent=2) if lpb else None, why_c, suffix="lb")
+        lc.update(source="logbooks", logbooks=[s["space"] for s in srcs])
+        cands.append(lc)
         queue = []
         ref = referee(bench)
         # Baselines are only reusable under the same referee: a changed verifier makes old scores incomparable.
@@ -357,8 +379,8 @@ def start() -> dict:
     return {"status": "started", "round": rid, "queued": len(queue), "candidates": [c["id"] for c in cands]}
 
 
-def _register(a: dict, rid: str, kind: str, strat: dict, content: str | None, why: str) -> dict:
-    cid = f"{rid}-{'pb' if kind == 'playbook' else 'pol'}"
+def _register(a: dict, rid: str, kind: str, strat: dict, content: str | None, why: str, suffix: str = "") -> dict:
+    cid = f"{rid}-{suffix or ('pb' if kind == 'playbook' else 'pol')}"
     c = {"id": cid, "round": rid, "kind": kind, "strategy": strat["id"], "created": time.time(), "reason": why,
          "status": "proposed" if content else "rejected_static"}
     if content:
@@ -510,15 +532,41 @@ def _void(rnd: dict, why: str) -> dict:
     return {"status": "void", "why": why}
 
 
+def _bench_sum(rnd: dict, cid: str) -> float:
+    return sum((q.get("result") or {}).get("fitness", 0.0) for q in rnd["queue"] if q["who"] == cid)
+
+
+def min_gap_s() -> float:
+    """Normally one round per night. Until PAPERCI_EVOLVE_FAST_UNTIL (epoch seconds) rounds may follow each
+    other after PAPERCI_EVOLVE_FAST_GAP_H hours, for an operator-supervised improvement push."""
+    import time as _t
+    until = float(os.getenv("PAPERCI_EVOLVE_FAST_UNTIL", "0") or 0)
+    if _t.time() < until:
+        return float(os.getenv("PAPERCI_EVOLVE_FAST_GAP_H", "0.5")) * 3600
+    return 20 * 3600
+
+
+def due_new_round() -> bool:
+    """True when a round may start now outside the nightly slot (fast mode only)."""
+    if time.time() >= float(os.getenv("PAPERCI_EVOLVE_FAST_UNTIL", "0") or 0) or has_pending():
+        return False
+    cur = _load(ROUND, {})
+    return time.time() - cur.get("started", 0) >= min_gap_s() and time.time() - cur.get("tried", 0) >= 1800
+
+
 def decide() -> dict:
     rnd = _load(ROUND, {})
     a = archive()
     inc = a["baselines"].get(rnd.get("baseline_key", rnd["incumbent"]["key"]), {})
-    strat = next((s for s in a["strategies"] if s["id"] == rnd["strategy"]), None)
+    strat0 = next((s for s in a["strategies"] if s["id"] == rnd["strategy"]), None)
     summary = []
     pb_adopted = False
-    for cid in rnd["candidates"]:
+    # Candidate playbooks are compared best first, and at most one is adopted per round (they are alternatives).
+    order = sorted(rnd["candidates"], key=lambda cid: -_bench_sum(rnd, cid))
+    for cid in order:
         c = a["candidates"][cid]
+        # Logbook candidates are not produced by the improver strategy, so they do not score it.
+        strat = None if c.get("source") == "logbooks" else strat0
         if c["status"] == "rejected_static":
             if strat:
                 strat["uses"] += 1
@@ -550,10 +598,14 @@ def decide() -> dict:
             c.update(status="rejected", reason=(f"regressed on {len(regress)} paper(s)" if regress else
                                                 f"fitness {delta:+.2f} below the +{MARGIN} margin"))
             summary.append(f"{c['kind']} {delta:+.2f} (not adopted)")
+        elif c["kind"] == "playbook" and pb_adopted:
+            c.update(status="rejected", reason=f"fitness {delta:+.2f}, but a better playbook candidate was adopted this round")
+            summary.append(f"{cid.rsplit('-', 1)[-1]} {delta:+.2f} (a better playbook won)")
         elif c["kind"] == "playbook":
             _adopt_playbook(a, c)
             pb_adopted = True
-            summary.append(f"playbook {delta:+.2f} adopted as generation {load_playbook().generation}")
+            summary.append(f"{'logbook ' if c.get('source') == 'logbooks' else ''}playbook {delta:+.2f} adopted as "
+                           f"generation {load_playbook().generation}")
         else:
             c.update(status="pending_approval", reason=f"fitness {delta:+.2f}; code change waits for a human")
             summary.append(f"policy {delta:+.2f}, awaiting human approval")

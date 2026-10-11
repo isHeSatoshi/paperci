@@ -302,6 +302,38 @@ def test_icml_consensus_and_score():
         ie.ICML, ie.CANDS, ie.STATE, ie.BENCH_FILE, ie._get, ie.ours = saved
 
 
+def test_logbook_rules_must_be_general():
+    from paperci.logbook_learn import leak_problems
+    from paperci.schemas import PlaybookRule
+    src = [{"orid": "X", "arxiv": "2601.01234", "space": "alice/mtlr-eigenvalue-repro",
+            "title": "Multi-task Linear Regression without Eigenvalue Lower Bounds"}]
+    rule = lambda adv: PlaybookRule(rule_id="lb_x", category="missing_module", pattern="No module", advice=adv)  # noqa: E731
+    assert not leak_problems(rule("If imports fail, pip install -e . from the repo root before running scripts."), src)
+    assert leak_problems(rule("For multi-task linear regression papers, copy the setup of 2601.01234."), src)
+    assert leak_problems(rule("Clone alice/mtlr-eigenvalue-repro and follow it."), src)
+    assert leak_problems(rule("Expect an accuracy of 0.9312 at the end."), src)
+
+
+def test_background_queues_alternate():
+    import time
+    from paperci import evolve, icml_eval, ops
+    saved = (ops.enabled, ops._load, evolve.due_new_round, evolve.has_pending, icml_eval.golden_pending,
+             icml_eval.has_pending, ops.NIGHTLY_HOUR)
+    st = {"nightly_day": time.strftime("%Y-%m-%d", ops._local())}
+    ops.enabled, ops._load = (lambda: True), (lambda p: st)
+    evolve.due_new_round, evolve.has_pending = (lambda: False), (lambda: True)
+    icml_eval.golden_pending, icml_eval.has_pending = (lambda: False), (lambda: True)
+    try:
+        assert ops.due() == "evolve"
+        st["last_bg"] = "evolve"
+        assert ops.due() == "icml"
+        st["last_bg"] = "icml"
+        assert ops.due() == "evolve"
+    finally:
+        (ops.enabled, ops._load, evolve.due_new_round, evolve.has_pending, icml_eval.golden_pending,
+         icml_eval.has_pending, ops.NIGHTLY_HOUR) = saved
+
+
 def test_go_replies_start_the_run():
     from paperci.web import GO
     for t in ("Go ahead with your plan.", "go", "Go!", "do everything", "ok", "start", "yes"):

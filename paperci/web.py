@@ -349,6 +349,12 @@ def _check_watches() -> None:
 
 def _worker() -> None:
     from . import ops
+    try:  # background runs killed by a restart (deploy, crash) are redone and do not count as attempts
+        from . import evolve, icml_eval
+        icml_eval.release()
+        evolve.release()
+    except Exception as ex:
+        ops.event("error", f"Could not release interrupted background runs: {type(ex).__name__}: {str(ex)[:120]}")
     errors = 0
     while True:
         row = None

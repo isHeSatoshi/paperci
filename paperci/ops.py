@@ -136,12 +136,19 @@ def due() -> str | None:
     # Nightly and evolution steps come before the daily-cap pause: the evolution loop has its own budget.
     if st.get("nightly_day") != today and _local(now).tm_hour >= NIGHTLY_HOUR:
         return "nightly"
-    if evolve.has_pending() and os.getenv("PAPERCI_EVOLVE", "1") == "1":
-        return "evolve"
     from . import icml_eval
+    evo_on = os.getenv("PAPERCI_EVOLVE", "1") == "1"
+    if evo_on and evolve.due_new_round():
+        return "evolve-start"
     if icml_eval.golden_pending():
         return "golden"
-    if icml_eval.has_pending():
+    evo, icml = evo_on and evolve.has_pending(), icml_eval.has_pending()
+    # Both are long background queues; alternate so neither starves the other.
+    if evo and icml:
+        return "icml" if st.get("last_bg") == "evolve" else "evolve"
+    if evo:
+        return "evolve"
+    if icml:
         return "icml"
     cap = ledger.daily_cap()
     if cap is not None and ledger.today_total() >= cap * 0.9:
@@ -166,13 +173,20 @@ def run_due(kind: str) -> None:
             st["nightly_day"] = time.strftime("%Y-%m-%d", _local())
             _save(STATE, st)
             _sub([sys.executable, "-u", "-m", "paperci.ops", "nightly"], "nightly", LIMITS["nightly"])
+        elif kind == "evolve-start":
+            _sub([sys.executable, "-u", "-m", "paperci.evolve", "start"], "evolve", LIMITS["nightly"])
         elif kind in ("icml", "golden"):
+            if kind == "icml":
+                st["last_bg"] = "icml"
+                _save(STATE, st)
             from . import icml_eval
             rc, _ = _sub([sys.executable, "-u", "-m", "paperci.icml_eval", "step" if kind == "icml" else "golden-step"],
                          kind, LIMITS[kind], preemptible=True)
             if rc == PREEMPTED and kind == "icml":
                 icml_eval.release()
         elif kind == "evolve":
+            st["last_bg"] = "evolve"
+            _save(STATE, st)
             rc, out = _sub([sys.executable, "-u", "-m", "paperci.evolve", "step"], "evolve", LIMITS["evolve"],
                            preemptible=True)
             if rc == PREEMPTED:
