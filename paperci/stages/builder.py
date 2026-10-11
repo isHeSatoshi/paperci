@@ -388,7 +388,25 @@ class Builder:
                 finished = finished or done
             if finished:
                 return
+        if not self.result and self._auto_submit():
+            return
         self.result = self.result or {"status": "max_turns", "reason": f"no submit after {max_turns} turns"}
+
+    def _auto_submit(self) -> bool:
+        """Out of turns with a run script already written: the harness submits it once itself. It is the same
+        offline dry run the agent would trigger, and it is marked reduced scale, so at best it yields toy-scale
+        evidence and never a "verified" verdict."""
+        if self.sb.exec("test -s /work/paperci_run.sh && echo yes", timeout=20, quiet=True).output.strip() != "yes":
+            return False
+        live.emit("heal", f"turn {self.turn}  out of turns with a run script written; harness submits it once", indent=1)
+        tracing.log("auto-submit at the turn limit", turn=self.turn)
+        obs, _ = self._tool("submit", {"scale": "reduced", "notes": "auto-submitted by the harness at the turn limit"})
+        if self.result and self.result.get("status") == "built":
+            self.result["auto_submitted"] = True
+            return True
+        self.result = {"status": "max_turns", "reason": f"no submit after {self.turn} turns; harness auto-submit "
+                                                         f"failed the offline dry run: {obs[-300:]}"}
+        return True
 
     def _finalize(self, span) -> None:
         sb = self.sb

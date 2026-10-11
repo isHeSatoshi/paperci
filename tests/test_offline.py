@@ -342,6 +342,23 @@ def test_background_queues_alternate():
          icml_eval.has_pending, ops.NIGHTLY_HOUR) = saved
 
 
+def test_auto_submit_at_turn_limit():
+    from types import SimpleNamespace as NS
+    from paperci.stages.builder import Builder
+    for script, dry_ok, want in (("yes", True, "built"), ("yes", False, "max_turns"), ("", True, None)):
+        b = Builder.__new__(Builder)
+        b.sb, b.result, b.turn = NS(exec=lambda *a, **k: NS(output=script)), None, 18
+
+        def tool(name, args, b=b, ok=dry_ok):
+            b.result = {"status": "built", "scale": args["scale"]} if ok else None
+            return ("accepted" if ok else "REJECTED: exit 1"), ok
+        b._tool = tool
+        did = b._auto_submit()
+        assert did == (want is not None) and (b.result or {}).get("status") == want, (script, dry_ok, b.result)
+        if want == "built":
+            assert b.result["scale"] == "reduced" and b.result["auto_submitted"]
+
+
 def test_go_replies_start_the_run():
     from paperci.web import GO
     for t in ("Go ahead with your plan.", "go", "Go!", "do everything", "ok", "start", "yes"):
