@@ -115,10 +115,12 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16] if p.exists() else "-"
 
 
-def referee() -> dict:
-    """Fingerprint of everything a candidate must never influence, including the sealed claims themselves."""
+def referee(bench: list[str]) -> dict:
+    """Fingerprint of everything a candidate must never influence, including the benchmark's sealed claims
+    (only the bench: other papers are sealed all the time by the autopilot and by authors)."""
     h = {f: _sha(ROOT / f) for f in FROZEN}
-    rows = db.q("SELECT arxiv_id, sha256 FROM sealed_claims ORDER BY arxiv_id")
+    rows = db.q("SELECT arxiv_id, sha256 FROM sealed_claims WHERE arxiv_id IN (%s) ORDER BY arxiv_id"
+                % ",".join("?" * len(bench)), tuple(bench))
     h["sealed_claims"] = hashlib.sha256("".join(f"{r['arxiv_id']}:{r['sha256']}" for r in rows).encode()).hexdigest()[:16]
     return h
 
@@ -315,13 +317,16 @@ def start() -> dict:
             src, why_b = None, f"proposal failed: {type(ex).__name__}: {str(ex)[:160]}"
         cands.append(_register(a, rid, "policy", strat, src, why_b))
         queue = []
-        cached = a["baselines"].get(inc["key"], {})
+        ref = referee(bench)
+        # Baselines are only reusable under the same referee: a changed verifier makes old scores incomparable.
+        bkey = inc["key"] + ":" + hashlib.sha256(json.dumps(ref, sort_keys=True).encode()).hexdigest()[:8]
+        cached = a["baselines"].get(bkey, {})
         queue += [{"who": "incumbent", "paper": p, "status": "pending", "attempts": 0} for p in bench if p not in cached]
         for c in cands:
             if c["status"] == "proposed":
                 queue += [{"who": c["id"], "paper": p, "status": "pending", "attempts": 0} for p in bench]
         rnd = {"id": rid, "started": time.time(), "status": "evaluating" if queue else "deciding", "bench": bench,
-               "budget": BUDGET, "referee": referee(), "incumbent": inc, "strategy": strat["id"],
+               "budget": BUDGET, "referee": ref, "baseline_key": bkey, "incumbent": inc, "strategy": strat["id"],
                "meta_new_strategy": bool(meta), "candidates": [c["id"] for c in cands], "queue": queue}
         _save(ROUND, rnd)
         _save(ARCHIVE, a)
@@ -396,8 +401,8 @@ def step() -> dict:
     rnd = _load(ROUND, {})
     if rnd.get("status") not in ("evaluating", "deciding"):
         return {"status": "idle"}
-    if referee() != rnd["referee"]:
-        return _void(rnd, "the referee changed during the round (code deploy or tampering); results are not comparable")
+    if referee(rnd["bench"]) != rnd["referee"]:
+        return _stop_early(rnd, "the referee changed between runs (code deploy or tampering)")
     if rnd["status"] == "deciding":
         return decide()
     pending = [q for q in rnd["queue"] if q["status"] == "pending"]
@@ -436,15 +441,16 @@ def step() -> dict:
         out = (p.communicate()[0] or "") + f"\nkilled after {EVAL_TIMEOUT // 60} min"
     log.write_text(out, encoding="utf-8")
     rnd = _load(ROUND, rnd)
-    if referee() != rnd["referee"]:
-        return _void(rnd, f"a frozen file or the sealed claims changed during evaluation of {item['who']}")
+    if referee(rnd["bench"]) != rnd["referee"]:
+        return _stop_early(rnd, f"a frozen file or the bench's sealed claims changed during the {item['who']} run "
+                                "(that run is discarded)")
     res = fitness(item["paper"], label)
     for q in rnd["queue"]:
         if q["who"] == item["who"] and q["paper"] == item["paper"]:
             q.update(status="done" if res else ("pending" if q["attempts"] < 2 else "failed"), result=res, running=False)
     if res and item["who"] == "incumbent":
         a = archive()
-        a["baselines"].setdefault(rnd["incumbent"]["key"], {})[item["paper"]] = res
+        a["baselines"].setdefault(rnd.get("baseline_key", rnd["incumbent"]["key"]), {})[item["paper"]] = res
         _save(ARCHIVE, a)
     _save(ROUND, rnd)
     return {"status": "ran", "who": item["who"], "paper": item["paper"], "result": res}
@@ -459,6 +465,20 @@ def release() -> None:
             q.update(running=False, attempts=max(0, q["attempts"] - 1), restarts=q.get("restarts", 0) + 1)
     if rnd:
         _save(ROUND, rnd)
+
+
+def _stop_early(rnd: dict, why: str) -> dict:
+    """Runs that finished before the referee changed were checked against it and stay comparable; nothing after
+    the change is. So the round stops and decides on fully evaluated candidates only."""
+    left = [q for q in rnd["queue"] if q["status"] == "pending"]
+    for q in left:
+        q.update(status="skipped_referee", running=False)
+    rnd["status"] = "deciding"
+    rnd["stopped_early"] = why
+    _save(ROUND, rnd)
+    ops.event("incident", f"Evolution round {rnd['id']} stopped early: {why}; {len(left)} run(s) skipped, deciding on "
+                          "the runs completed before the change", healed=True, component="evolve")
+    return decide()
 
 
 def _void(rnd: dict, why: str) -> dict:
@@ -477,7 +497,7 @@ def _void(rnd: dict, why: str) -> dict:
 def decide() -> dict:
     rnd = _load(ROUND, {})
     a = archive()
-    inc = a["baselines"].get(rnd["incumbent"]["key"], {})
+    inc = a["baselines"].get(rnd.get("baseline_key", rnd["incumbent"]["key"]), {})
     strat = next((s for s in a["strategies"] if s["id"] == rnd["strategy"]), None)
     summary = []
     pb_adopted = False
