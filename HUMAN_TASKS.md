@@ -23,7 +23,12 @@ Needed so the agent can read traces back from the terminal (SDK ingestion alread
 4. Check: `neatlogs --host https://app.neatlogs.com --profile setup-https---app-neatlogs-com --project da3f6fba-4dfc-47d7-9960-3e3caedf7360 traces list --limit 5`
 5. Tell the agent "neatlogs CLI approved".
 
-## 2. neatlogs dashboard: grab the before/after trace links — TODO, ~5 min
+## 2. neatlogs dashboard: grab the before/after trace links — OPTIONAL now
+Agent status: evidence is read back via the CLI into docs/evidence.md (IDs + numbers). The CLI cannot create
+share links (sharing is read-only) and the OAuth login has read scopes only, so tagging/commenting traces
+returned FORBIDDEN. neatlogs ingestion is also currently degraded (Doctor probe: TRACE_READBACK_TIMEOUT at
+pii_redaction); details for the neatlogs team in `docs/neatlogs-feedback.md` (worth posting in their Discord).
+If you ever want links/screenshots for the video, the steps are:
 1. Open https://app.neatlogs.com -> project -> Traces.
 2. Search for these trace IDs (all listed in `docs/evidence.md`):
    - BEFORE (held-out, v1): `294209f0b2d1b60bfc1509fdbece2f1b`

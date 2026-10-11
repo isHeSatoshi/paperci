@@ -10,18 +10,18 @@ Everything under **Measured** comes from the spend ledger (reconciled with the L
 | papers_watched | 145 |
 | triage_accept | 55 |
 | papers_with_sealed_claims | 44 |
-| build_attempts | 22 |
+| build_attempts | 23 |
 | built | 6 |
 | metric_measured_offline | 6 |
 | oracle_validated_tasks | 2 |
-| llm_spend_total_usd | 5.4377 |
+| llm_spend_total_usd | 5.655 |
 | front_half_cost_per_watched_paper_usd | 0.00381 |
-| builder_cost_per_attempt_usd | 0.2005 |
-| sandbox_minutes_total | 127.3 |
-| sandbox_minutes_per_attempt | 4.95 |
-| llm_cost_per_validated_task_all_in_usd | 2.719 |
-| remote_spend_reported_by_proxy_usd | 5.4377 |
-| llm_spend_by_stage_usd | {'builder': 4.4121, 'claims': 0.5403, 'improver': 0.1076, 'smoke': 0.0, 'solver': 0.2834, 'triage': 0.0125, 'verifier': 0.0819} |
+| builder_cost_per_attempt_usd | 0.2013 |
+| sandbox_minutes_total | 134.6 |
+| sandbox_minutes_per_attempt | 5.05 |
+| llm_cost_per_validated_task_all_in_usd | 2.828 |
+| remote_spend_reported_by_proxy_usd | 5.655 |
+| llm_spend_by_stage_usd | {'builder': 4.6294, 'claims': 0.5403, 'improver': 0.1076, 'smoke': 0.0, 'solver': 0.2834, 'triage': 0.0125, 'verifier': 0.0819} |
 
 ## Measured per held-out attempt (same 5 papers, v1 baseline vs v2 self-improved builder)
 
@@ -39,15 +39,15 @@ Everything under **Measured** comes from the spend ledger (reconciled with the L
 ## Assumptions (not measured)
 
 - CPU worker price: $0.17/hour (4 vCPU / 8 GB on-demand class). Sandbox minutes are measured;
-  the price is not. Compute per attempt at that price: $0.014.
+  the price is not. Compute per attempt at that price: $0.0143.
 - No GPU work is included: GPU-scale papers are rejected at triage today.
 - LLM prices are the proxy's list prices (`/v1/model/info`), with Claude prompt caching on the builder.
 
 ## Derived COGS (measured LLM + assumed compute)
 
-- COGS per build attempt (v2): about $0.206 (LLM 0.1822 + compute 0.014 + the front-half triage/claims cost spread over accepted papers).
+- COGS per build attempt (v2): about $0.207 (LLM 0.1822 + compute 0.0143 + the front-half triage/claims cost spread over accepted papers).
 - LLM cost per validated task on held-out v2: $0.91 (only 1 validated task(s), so this is a small-sample number).
-- All-in LLM spend per validated task including all development/tuning runs: $2.719.
+- All-in LLM spend per validated task including all development/tuning runs: $2.828.
 
 ## cfo.ai entry sheet (for the human; prices are hypotheses to test, not measured demand)
 

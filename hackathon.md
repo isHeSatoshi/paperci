@@ -71,6 +71,11 @@
 - Host disk C: filled up (Docker image of one dev build was 17 GB) and Docker Desktop died mid-oracle (exit 135). User freed space; we deleted our stale build images; added dead-container cleanup + low-disk warning to `ensure_infra()` and treat exit 135/255 as infra retries.
 - Chaos run (`PAPERCI_CHAOS=proxy_down`, dev paper): repo fetch failed (`Could not resolve proxy`), self-heal restarted the proxy, retry succeeded, failure marked recovered; builder then gave up correctly in 5 turns ($0.088, data not released). Trace `14ed5fe7f083b2b1ff4c98fbbf705223`. The failure was classified generic `nonzero_exit`; added a `proxy_unreachable` class afterwards.
 
+- User linked the repo in Entire. Second chaos run on another dev paper: recovered again and was now classified
+  `proxy_unreachable` (the classifier fix from the first chaos run, validated). neatlogs: the CLI login is
+  read-only (tag/comment FORBIDDEN, sharing read-only), and ingestion is degraded (Doctor probe now fails with
+  TRACE_READBACK_TIMEOUT; 16 traces in `dlq`). Wrote `docs/neatlogs-feedback.md` for the neatlogs team.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, same 5 papers, same sealed claims (v1 baseline -> v2 self-improved):

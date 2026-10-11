@@ -1,4 +1,4 @@
-# Evidence (generated 2026-10-11 10:08 IST by scripts/build_evidence.py)
+# Evidence (generated 2026-10-11 10:34 IST by scripts/build_evidence.py)
 
 All numbers below are measured from `data/paperci.sqlite`, run artifacts and neatlogs readback.
 Paper identities are anonymized (P-xxxxxx); per-paper verdicts are not published.
@@ -53,25 +53,28 @@ rules + enforced controller, learned image gen1). Papers taken in queue order (n
 
 ## 4. Failure taxonomy and recoveries
 
-Builder failure classes (all runs): turn_budget_exhausted 8, python_error 7, missing_module 6, nonzero_exit 5, egress_denied 4, data_missing 4, timeout 3, api_incompat 2
+Builder failure classes (all runs): turn_budget_exhausted 8, python_error 7, missing_module 6, nonzero_exit 5, egress_denied 4, data_missing 4, timeout 3, api_incompat 2, proxy_unreachable 1
 
 Recovered failures (the agent worked around it inside a build that succeeded, or harness self-heal + retry):
 - P-73e4a2 heldout-v2: python_error (trace `80481abc951ae433aa67a126d6925222`)
 - P-646513 dev-chaos: nonzero_exit (trace `14ed5fe7f083b2b1ff4c98fbbf705223`)
+- P-13d4e4 dev-chaos2: proxy_unreachable (trace `c07db8e5e1be1fb9872ccdf8636faf6c`)
 
 Fault-injection (chaos) runs (`PAPERCI_CHAOS=proxy_down` stops the egress proxy before the repo fetch):
 - P-646513 dev-chaos: fetch failed (`curl: (5) Could not resolve proxy: paperci-egress`), classified `nonzero_exit`, self-heal restarted the proxy, retry succeeded -> recovered=True; trace `14ed5fe7f083b2b1ff4c98fbbf705223`
+- P-13d4e4 dev-chaos2: fetch failed (`curl: (5) Could not resolve proxy: paperci-egress`), classified `proxy_unreachable`, self-heal restarted the proxy, retry succeeded -> recovered=True; trace `c07db8e5e1be1fb9872ccdf8636faf6c`
 
 ## 5. Funnel and cost
 
 - Watched (fresh, has code): 145; triage accept: 55; grounded sealed claims: 44 papers / 173 claims
 - Triage reject reasons: {'large pretrained model signals': 43, 'needs hosted-LLM/API credentials': 29, 'GPU-scale signals in README': 21, 'no Python code': 20, 'repo too large': 7, 'llm': 7, 'empty repo': 4, 'repo unavailable': 3}
 - Front half (snapshot+triage+claims) cost: $0.5528
-- Total LLM spend: ledger $5.4377 vs proxy-reported $5.4377
+- Total LLM spend: ledger $5.655 vs proxy-reported $5.655
 
 ## 6. neatlogs readback (CLI, OAuth profile; SDK key excluded from the CLI env)
 
 - chaos `14ed5fe7f083b2b1ff4c98fbbf705223` finalization `dlq` (recovery is also recorded in the state DB `failures` table and `runs/logs/dev-chaos.log`)
+- chaos `c07db8e5e1be1fb9872ccdf8636faf6c` finalization `None` (recovery is also recorded in the state DB `failures` table and `runs/logs/dev-chaos.log`)
 - `a9540916517fe38646791aacb7bade88` finalized 723s, 0 LLM calls, 0 tool calls, 0 tokens, tags ['paperci', 'run:heldout-v1', 'variant:v1']
 - `892df14168f4210e9594646da9034048` finalized 800s, 3 LLM calls, 2 tool calls, 38603 tokens, tags ['paperci', 'run:heldout-v2', 'variant:v2']
 - `e261ea87d9c32fb1968cd051a2ac9752` None 0s, None LLM calls, None tool calls, None tokens, tags None
