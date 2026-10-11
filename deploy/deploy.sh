@@ -6,6 +6,9 @@
 # The last commit that passed is recorded so the watchdog can roll back to it on its own later.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# The whole script is one block: bash parses it before running, so `git reset` replacing this file mid-run
+# cannot make bash execute a mix of the old and new versions.
+{
 REF="${1:-origin/main}"
 PY=.venv/bin/python
 GOOD=$(git rev-parse HEAD)
@@ -42,3 +45,5 @@ healthy || rollback "service unhealthy after restart"
 echo "$NEW" > registry/ops/last_good_commit
 ev "Deployed ${NEW:0:8} (tests passed, service healthy)" true
 echo "deployed ${NEW:0:8}"
+exit 0
+}
