@@ -2,6 +2,8 @@
 Description=PaperCI agent (web app, author conversations, autopilot)
 After=network-online.target docker.service
 Wants=network-online.target docker.service
+# never give up restarting (systemd's default start limit would park the unit in "failed")
+StartLimitIntervalSec=0
 
 [Service]
 User=ubuntu
@@ -13,6 +15,8 @@ Restart=always
 RestartSec=5
 KillMode=mixed
 TimeoutStopSec=30
+# Under memory pressure the kernel kills a sandboxed build, not the agent that supervises it.
+OOMScoreAdjust=-500
 
 [Install]
 WantedBy=multi-user.target

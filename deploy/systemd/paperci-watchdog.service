@@ -1,10 +1,11 @@
 [Unit]
-Description=PaperCI watchdog: health checks with automatic repair
+Description=PaperCI watchdog: health checks with automatic repair (shell fallback if it breaks)
 After=docker.service
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/ubuntu/paperci
 EnvironmentFile=/home/ubuntu/paperci/deploy/server.env
-ExecStart=/home/ubuntu/paperci/.venv/bin/python -m paperci.ops watchdog
+# If the Python watchdog crashes or hangs (timeout), the dependency-free shell healer takes over.
+ExecStart=/bin/sh -c 'timeout 600 /home/ubuntu/paperci/.venv/bin/python -m paperci.ops watchdog || /bin/sh /home/ubuntu/paperci/deploy/fallback-healer.sh'
 TimeoutStartSec=900

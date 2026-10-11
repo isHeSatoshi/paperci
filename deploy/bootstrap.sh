@@ -20,6 +20,11 @@ if ! sudo swapon --show | grep -q /swapfile; then
   grep -q /swapfile /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
 fi
 
+echo "== reboot on kernel panic/oops/lockup (the VM heals a frozen guest itself; CloudWatch alarms are denied here)"
+printf 'kernel.panic = 10\nkernel.panic_on_oops = 1\nkernel.softlockup_panic = 1\nkernel.hung_task_panic = 0\n' \
+  | sudo tee /etc/sysctl.d/90-paperci-selfheal.conf >/dev/null
+sudo sysctl -q --system
+
 echo "== docker log rotation"
 echo '{"log-driver":"json-file","log-opts":{"max-size":"20m","max-file":"3"}}' | sudo tee /etc/docker/daemon.json >/dev/null
 sudo systemctl restart docker

@@ -107,6 +107,11 @@ def _cmd(job: dict, *extra: str) -> list[str]:
     return cmd + list(extra)
 
 
+def ops_limits() -> dict:
+    from .ops import LIMITS
+    return LIMITS
+
+
 def _run_label(job: dict) -> str:
     return job["label"] + (f"-{job['attempt']}" if job["attempt"] > 1 else "")
 
@@ -141,25 +146,36 @@ def _narrate(token: str, line: str, seen: set) -> None:
             return
 
 
-def _subprocess(job: dict, cmd: list[str], log: Path, narrate: bool) -> tuple[int, str]:
+def _subprocess(job: dict, cmd: list[str], log: Path, narrate: bool, limit: int) -> tuple[int, str]:
+    from . import ops
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_LIVE": "1"}
     seen: set = set()
     with open(log, "a", encoding="utf-8") as f:
         p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
-                             text=True, encoding="utf-8", errors="replace", bufsize=1)
-        for line in p.stdout:
-            f.write(line)
-            f.flush()
-            if narrate and " - neatlogs - " not in line:
-                _narrate(job["token"], ANSI.sub("", line), seen)
-        p.wait()
+                             text=True, encoding="utf-8", errors="replace", bufsize=1, start_new_session=os.name != "nt")
+        killer = threading.Timer(limit, ops.kill_tree, args=(p,))  # a hung run can't hold the worker forever
+        killer.daemon = True
+        killer.start()
+        try:
+            for line in p.stdout:
+                f.write(line)
+                f.flush()
+                if narrate and " - neatlogs - " not in line:
+                    _narrate(job["token"], ANSI.sub("", line), seen)
+            p.wait()
+        finally:
+            killer.cancel()
+    if p.returncode in (-9, 137):
+        f_out = log.read_text(encoding="utf-8", errors="replace")
+        return p.returncode, f_out + f"\nstopped: the run exceeded its {limit // 60} min limit\n"
     return p.returncode, log.read_text(encoding="utf-8", errors="replace")
 
 
 def _prepare(job: dict) -> None:
     t = job["token"]
     _set(t, status="running", phase="prepare", started=job["started"] or time.time())
-    rc, out = _subprocess(job, _cmd(job, "--prepare-only"), JOBS / f"{t}.log", narrate=False)
+    rc, out = _subprocess(job, _cmd(job, "--prepare-only"), JOBS / f"{t}.log", narrate=False,
+                          limit=ops_limits()["prepare"])
     m = re.findall(r"PREPARED: (\{.*\})", out)
     if not m:
         if "no public code repository" in out:
@@ -200,7 +216,7 @@ def _run(job: dict) -> None:
         extra += ["--focus", ",".join(focus)]
     if attempt > 1:
         _say(t, f"Starting attempt {attempt} with what you told me.", kind="narration")
-    rc, out = _subprocess(job, _cmd(job, *extra), JOBS / f"{t}.log", narrate=True)
+    rc, out = _subprocess(job, _cmd(job, *extra), JOBS / f"{t}.log", narrate=True, limit=ops_limits()["run"])
     paths = re.findall(r"REVIEW_PATH: (.+)", out)
     if rc != 0 or not paths:
         _set(t, status="failed", error=_last_line(out), finished=time.time())
@@ -309,14 +325,22 @@ def _check_watches() -> None:
 
 def _worker() -> None:
     from . import ops
+    errors = 0
     while True:
         row = None
+        ops.beat()
         try:
             with LOCK:
                 row = db.q1("SELECT * FROM web_jobs WHERE status IN ('queued_prepare','queued_run') ORDER BY created LIMIT 1")
             if row:
                 job = dict(row)
-                (_prepare if job["status"] == "queued_prepare" else _run)(job)
+                kind = "prepare" if job["status"] == "queued_prepare" else "run"
+                ops.beat(kind)
+                try:
+                    (_prepare if kind == "prepare" else _run)(job)
+                finally:
+                    ops.beat()
+                errors = 0
                 continue
             kind = ops.due()
             if kind:  # autopilot only uses the sandbox when no author is waiting
@@ -328,12 +352,15 @@ def _worker() -> None:
                                  "if I need another attempt.")
                 _set(j["token"], status="queued_run", phase="run")
             _check_watches()
+            errors = 0
         except Exception as e:  # keep the agent alive; surface the error in the conversation
+            errors += 1
             if row:
                 _set(row["token"], status="failed", error=str(e)[:300], finished=time.time())
                 _say(row["token"], f"I hit an internal error and stopped: `{str(e)[:200]}`")
-            else:
-                ops.event("error", f"Worker error (recovered, continuing): {type(e).__name__}: {str(e)[:160]}")
+            elif errors in (1, 10, 100):  # a persistent error is reported, not spammed
+                ops.event("error", f"Worker error #{errors} (continuing with backoff): {type(e).__name__}: {str(e)[:160]}")
+            time.sleep(min(120, 2 ** min(errors, 7)))  # stays under the heartbeat limit, so backoff is not "hung"
         time.sleep(2)
 
 
@@ -551,7 +578,9 @@ def index():
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True, "ts": time.time()}
+    from . import ops
+    ok, info = ops.health()
+    return JSONResponse({"ok": ok, "ts": time.time(), **info}, status_code=200 if ok else 503)
 
 
 @app.get("/board", response_class=HTMLResponse)
@@ -673,7 +702,21 @@ def main() -> None:
     import uvicorn
     tracing.init("web", "-")
     from . import ops
-    db.ex("UPDATE web_jobs SET status='queued_'||phase WHERE status='running' AND phase IN ('prepare','run')")
+    try:
+        db.ex("ALTER TABLE web_jobs ADD COLUMN requeues INTEGER DEFAULT 0")
+    except Exception:
+        pass  # column exists
+    # A job that was running when the process died is retried, but at most twice: a job that keeps killing the
+    # worker is a poison job and must not take the agent down in a loop.
+    for j in db.q("SELECT token, requeues FROM web_jobs WHERE status='running' AND phase IN ('prepare','run')"):
+        if (j["requeues"] or 0) >= 2:
+            _set(j["token"], status="failed", phase="done", finished=time.time(), error="interrupted 3 times")
+            _say(j["token"], "This run was interrupted three times on my side, so I stopped retrying it to keep the "
+                             "service healthy for everyone. Sorry about that; the team has been notified.")
+            ops.event("incident", "Stopped retrying an author job that was interrupted 3 times (poison-job guard)",
+                      healed=True, component="worker")
+        else:
+            db.ex("UPDATE web_jobs SET status='queued_'||phase, requeues=COALESCE(requeues,0)+1 WHERE token=?", (j["token"],))
     ops.event("boot", "PaperCI agent started" + (" with autopilot on" if ops.enabled() else ""))
     threading.Thread(target=_worker, daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PAPERCI_WEB_PORT", "8000")), log_level="warning",

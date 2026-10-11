@@ -144,6 +144,30 @@ def test_daily_cap(monkeypatch=None):
     assert db is not None
 
 
+def test_worker_health():
+    import json
+    import time
+    from paperci import ops
+    saved = ops.HEARTBEAT.read_text() if ops.HEARTBEAT.exists() else None
+    try:
+        ops.beat()
+        assert ops.health()[0] and not ops.busy()
+        ops.beat("run")
+        assert ops.health()[0] and ops.busy()
+        d = json.loads(ops.HEARTBEAT.read_text())
+        d["deadline"] = time.time() - ops.GRACE - 1  # busy past its deadline = hung
+        ops.HEARTBEAT.write_text(json.dumps(d))
+        ok, info = ops.health()
+        assert not ok and info["overdue"] and not ops.busy()
+        ops.HEARTBEAT.write_text(json.dumps({"ts": time.time() - ops.IDLE_BEAT_MAX - 1, "busy": None}))
+        assert not ops.health()[0]  # idle but silent = worker thread dead
+    finally:
+        if saved is None:
+            ops.HEARTBEAT.unlink(missing_ok=True)
+        else:
+            ops.HEARTBEAT.write_text(saved)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

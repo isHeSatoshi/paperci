@@ -11,9 +11,10 @@ from . import db, ledger, ops
 from .recovery import load_playbook
 
 ICON = {"cycle": "&#8635;", "review": "&#9998;", "learn": "&#9733;", "chaos": "&#9889;", "incident": "&#10010;",
-        "digest": "&#9776;", "budget": "$", "error": "!", "boot": "&#9650;"}
+        "digest": "&#9776;", "budget": "$", "error": "!", "boot": "&#9650;", "drill": "&#9881;", "deploy": "&#8679;"}
 COLOR = {"cycle": "#6366f1", "review": "#0ea5e9", "learn": "#a855f7", "chaos": "#f59e0b", "incident": "#22c55e",
-         "digest": "#64748b", "budget": "#64748b", "error": "#ef4444", "boot": "#22c55e"}
+         "digest": "#64748b", "budget": "#64748b", "error": "#ef4444", "boot": "#22c55e", "drill": "#f97316",
+         "deploy": "#0f766e"}
 _cache: dict = {"ts": 0, "html": ""}
 
 
@@ -87,6 +88,10 @@ def render() -> str:
     up = "live" if last and time.time() - last < 3 * ops.CYCLE_EVERY else "idle"
     healed = [x for x in ev if x["kind"] == "incident"]
     drills = [x for x in ev if x["kind"] == "chaos"]
+    hdrills = [x for x in ev if x["kind"] == "drill"]
+    wd_age = time.time() - wd["last_run"] if wd.get("last_run") else None
+    wd_txt = (f"<span style='color:#dc2626;font-weight:700'>watchdog silent for {int(wd_age / 60)} min</span>"
+              if wd_age is not None and wd_age > 600 else (f"watchdog {_ago(wd['last_run'])}" if wd_age is not None else "watchdog not run yet"))
     learn = [x for x in ev if x["kind"] == "learn"]
     reviews = [x for x in ev if x["kind"] == "review"][-12:]
     feed = "".join(
@@ -104,6 +109,9 @@ def render() -> str:
     drill_rows = "".join(f"<div class=dr><span class='dotx {'ok' if x.get('recovered') else 'bad'}'></span>{e(x['text'])}"
                          f"<span class=muted> &middot; {_ago(x['ts'])}</span></div>" for x in reversed(drills[-5:])) or \
         "<div class=muted>First drill runs tonight.</div>"
+    hdrill_rows = "".join(f"<div class=dr><span class='dotx {'ok' if x.get('passed') else 'bad'}'></span>{e(x['text'])}"
+                          f"<span class=muted> &middot; {_ago(x['ts'])}</span></div>" for x in reversed(hdrills[-8:])) or \
+        "<div class=muted>No healer drills yet.</div>"
     inc_rows = "".join(f"<div class=dr><span class='dotx {'ok' if x.get('healed') else 'bad'}'></span>{e(x['text'])}"
                        f"<span class=muted> &middot; {_ago(x['ts'])}</span></div>" for x in reversed(healed[-6:])) or \
         "<div class=muted>No incidents so far. The watchdog checks every 3 minutes.</div>"
@@ -116,7 +124,7 @@ def render() -> str:
 <div class=muted>An autonomous agent that watches arXiv, rebuilds each new paper's code in a locked-down sandbox, verifies every
 headline claim offline with a different model family, learns from its own failures every night, and repairs itself.
 Papers are anonymized here.</div></div>
-<div class=muted style="text-align:right">last activity {(_ago(last) if last else 'never')}<br>watchdog {(_ago(wd['last_run']) if wd.get('last_run') else 'not run yet')}
+<div class=muted style="text-align:right">last activity {(_ago(last) if last else 'never')}<br>{wd_txt}
 {f"&middot; disk {wd.get('disk_free_gb')} GB free" if wd.get('disk_free_gb') else ''}<br>LLM today ${today:.2f}{f' of ${cap:.2f} cap' if cap else ''}</div></div>
 <div class=kpis>
 <div class=kpi><b>{f['watched_with_code']}</b>papers with code watched</div><div class=kpi><b>{f['triage_accept']}</b>runnable on CPU</div>
@@ -133,7 +141,12 @@ its regex matches its own failure class and almost nothing else, and its advice 
 no skipping verification, allowlisted hosts only). Held-out papers never feed the learner.</div><ul class=rules>{rules}</ul></div></div>
 <div><div class=box><h4>Activity</h4><div class=feed>{feed}</div></div>
 <div class=box><h4>Self-healing &middot; incidents repaired automatically</h4>{inc_rows}</div>
-<div class=box><h4>Chaos drills &middot; breaking itself on purpose, nightly</h4>{drill_rows}</div></div></div>
+<div class=box><h4>Chaos drills &middot; breaking itself on purpose, nightly</h4>{drill_rows}</div>
+<div class=box><h4>Who heals the healer &middot; drills against the self-healing layer</h4>{hdrill_rows}
+<div class=muted style="margin-top:8px">Layers: systemd restarts the agent if it dies; the watchdog restarts it if it hangs (worker
+heartbeat + per-job deadlines); a plain-shell fallback runs if the watchdog itself breaks; bad deploys roll back
+automatically; restarts are rate-limited and escalate to a rollback instead of looping; AWS reboots the VM if
+it stops responding.</div></div></div></div>
 <div class=foot>PaperCI &middot; generated {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())} &middot; traces by neatlogs &middot; sessions by Entire</div></div>
 <script>setTimeout(()=>location.reload(),30000)</script>"""
     _cache.update(ts=time.time(), html=body)

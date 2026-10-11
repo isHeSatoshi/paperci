@@ -29,7 +29,9 @@ def _queue(split: str | None, limit: int, ids: list[str] | None, label: str, fre
         args.append(split)
     sql += " AND p.arxiv_id NOT IN (SELECT arxiv_id FROM stages WHERE stage='verdict' AND run_label=? AND status='done')"
     if fresh:  # autopilot: never re-spend on a paper some earlier run already attempted
-        sql += " AND p.arxiv_id NOT IN (SELECT arxiv_id FROM stages WHERE stage='build' AND status IN ('done','budget'))"
+        # any build row at all, including one left 'running'/'error' by a crash: a paper that killed a run is never
+        # picked again automatically (no poison loop)
+        sql += " AND p.arxiv_id NOT IN (SELECT arxiv_id FROM stages WHERE stage='build')"
     sql += " ORDER BY p.published DESC LIMIT ?"
     args += [label, limit]
     return [r["arxiv_id"] for r in db.q(sql, tuple(args))]
