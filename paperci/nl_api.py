@@ -60,12 +60,16 @@ def _get(path: str) -> dict:
 def _trace_starts(trace_ids: set[str], cache: dict) -> dict:
     """Occurrences must carry the trace's canonical start time as stored by neatlogs (anything else is rejected
     as invalid evidence); traces neatlogs never received are left out."""
-    for tid in trace_ids - cache.keys():
+    # Cache values: start time (citable), False (never citable: unknown or dead-lettered), None (retry later).
+    for tid in trace_ids - {k for k, v in cache.items() if v is not None}:
         try:
-            cache[tid] = (_get(f"/traces/{tid}").get("data") or {}).get("startedAt")
+            t = _get(f"/traces/{tid}").get("data") or {}
+            # A trace still running has a provisional root (and start time); cite it once it is finalized.
+            fin = t.get("finalizationStatus")
+            cache[tid] = t.get("startedAt") if fin == "finalized" else (False if fin == "dlq" else None)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                cache[tid] = None
+                cache[tid] = False
         except Exception:
             pass
     return cache
