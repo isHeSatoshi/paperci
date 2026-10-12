@@ -24,6 +24,7 @@ from .config import ROOT
 REPO = "https://github.com/isHeSatoshi/paperci"
 KICKOFF = calendar.timegm((2026, 10, 10, 7, 0, 0))  # 12:30 IST, from neatlogs.com/hackathon
 LINKS = ROOT / "docs" / "judges-links.json"
+LOOP = ROOT / "docs" / "neatlogs-loop.json"
 CACHE = ROOT / "data" / "judges_cache.json"
 TTL_S = 600
 # PaperCI's own detections in neatlogs, plus the built-in one that ERROR spans trigger.
@@ -194,7 +195,7 @@ def loop_rows(d: dict) -> list[dict]:
     since from the run database and the neatlogs trace list."""
     from . import db, ops
     try:
-        entries = json.loads((ROOT / "docs" / "neatlogs-loop.json").read_text(encoding="utf-8"))
+        entries = json.loads(LOOP.read_text(encoding="utf-8"))
     except Exception:
         return []
     rows = (d.get("git") or {}).get("rows") or []
@@ -208,7 +209,9 @@ def loop_rows(d: dict) -> list[dict]:
         live = next((e["ts"] for e in sorted(deploys, key=lambda e: e["ts"]) if fix and e["ts"] >= fix["ts"]), None)
         r["live_since"] = live
         m = en.get("measure") or {}
-        if m.get("kind") == "failures" and not fix:
+        if en.get("outcome") == "fixed" and en.get("fix_subject") and not fix:
+            r["since"] = "fix committed, not deployed yet"
+        elif m.get("kind") == "failures" and not fix:
             n = db.q1("SELECT COUNT(*) n FROM failures WHERE category=? AND detail LIKE ? AND ts>?",
                       (m["category"], m.get("like") or "%", time.time() - 86400))["n"]
             r["since"] = f"{n} in the last 24 h: the input to the next evolution round"
@@ -400,7 +403,7 @@ def checks(d: dict) -> list[dict]:
         "rule": "A public repository with commits dated during the hackathon",
         "status": "pass" if first and first["ts"] >= KICKOFF - 600 else ("partial" if first else "missing"),
         "headline": (f"First commit {time.strftime('%a %d %b %H:%M', time.gmtime(first['ts'] + 19800))} IST "
-                     f"(kickoff 12:30 IST), {g.get('commits', 0)} commits, {g.get('before_kickoff', 0)} before kickoff") if first else "No git history",
+                     f"(kickoff Sat 10 Oct 12:30 IST), {g.get('commits', 0)} commits, {g.get('before_kickoff', 0)} before kickoff") if first else "No git history",
         "evidence": [f"<a href='{REPO}/commit/{first.get('sha', '')}' target=_blank><code>{first.get('sha', '')[:8]}</code></a> "
                      f"&ldquo;{html.escape(first.get('subject', '')[:90])}&rdquo;",
                      f"Public repository: <a href='{REPO}' target=_blank>{REPO}</a>"],
@@ -442,7 +445,8 @@ CSS = """
 .loop .n .x{font:700 22px ui-monospace,Menlo,monospace;margin:4px 0}
 .loop .n .d{font-size:12.5px;color:#475569}
 .wf{border:1px solid #e2e8f0;border-radius:12px;background:#fff;padding:12px 14px;margin-top:10px;font:12.5px ui-monospace,Menlo,monospace}
-.wf .row{display:grid;grid-template-columns:290px 1fr 90px;gap:10px;align-items:center;padding:2px 0}
+.wf .row{display:grid;grid-template-columns:290px 1fr 130px;gap:10px;align-items:center;padding:2px 0}
+.wf .row>div:last-child{white-space:nowrap}
 .wf .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wf .tk{height:10px;border-radius:3px;background:#c7d2fe;min-width:2px}
 .wf .ERROR .tk{background:#fca5a5}.wf .ERROR .nm{color:#b91c1c}
