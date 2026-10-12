@@ -390,7 +390,7 @@ def checks(d: dict) -> list[dict]:
         "id": "public", "title": "You built in public",
         "rule": "Links to what you shared during the hackathon, tagged #neatHack",
         "status": "pass" if posts else "missing",
-        "headline": f"{len(posts)} #neatHack posts" if posts else "No #neatHack posts linked yet",
+        "headline": f"{len(posts)} #neatHack post{'s' if len(posts) != 1 else ''}" if posts else "No #neatHack posts linked yet",
         "evidence": ([f"<a href='{html.escape(p)}' target=_blank rel=noopener>{html.escape(p[:80])}</a>" for p in posts]
                      + [f"The live board <a href='/board'>/board</a> and <a href='/icml'>/icml</a> have been public "
                         "the whole time, updated by the agent itself."]),

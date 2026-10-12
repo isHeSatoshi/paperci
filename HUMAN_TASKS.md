@@ -1,110 +1,47 @@
 # HUMAN_TASKS (things only a person can do)
 
-Batched for you. Each item has exact steps. Nothing here has been done by the agent.
-Status legend: TODO / DONE (mark it yourself).
+Updated 2026-10-12 17:15 IST. Everything the agent could do itself is done. Status: TODO / DONE.
 
-## A. More LLM credits for the always-on agent — TODO (you said you can get more), ~5 min
-The cloud agent is capped at $1.50/day (`PAPERCI_DAILY_CAP`) because the key has about $11.67 left of $20, and
-our own hard stop is $16. At that cap it reproduces about 5 papers a day. Measured costs: about $0.18-0.25 per
-reproduction attempt, about $0.05 per cycle to triage and seal new papers, about $0.10 per nightly learning run.
-Running the full schedule (a cycle every 90 min) costs about $4-5/day.
-Ask the organizers for: **+$30 on the same LiteLLM key** (same models: claude-sonnet-4.6, claude-haiku,
-nova-pro, nova-micro; no opus), valid through Fri 2026-10-16. That covers about 5 days at $4.5/day plus a
-demo-day reserve. Then tell the agent "credits added" and it will raise `PAPERCI_GLOBAL_BUDGET`,
-`PAPERCI_HARD_STOP` and `PAPERCI_DAILY_CAP` on the server.
+## Tonight, before 11:55 PM IST
 
-## B. Invite codes — DONE, removed on 2026-10-12: the app is open to everyone
-(Historical) Submissions on https://44-215-70-124.sslip.io needed an invite code (each run spends LLM budget and runs public
-code). The codes are in `%TEMP%\paperci-deploy\codes.txt` on this machine and in the server's `.env`.
-They are not in git. Give one to judges and keep one for yourself. The live board needs no code.
+1. **Demo video** — TODO. Script: `docs/demo-script.md`. For the live part, submit arXiv `2507.12843` on
+   https://paperci.vercel.app (repo is found automatically). It finishes in about 3-5 minutes and matched 3 of 5
+   claims last time. Open https://paperci.vercel.app/judges and /icml for the rest. Upload the video
+   (YouTube unlisted or Loom) and give the link to the agent (it goes into `docs/judges-links.json` -> `demo_url`).
+2. **cfo.ai plan** — TODO. Plan link goes into `docs/judges-links.json` -> `cfo_url`.
+3. **Share 3 neatlogs traces** — TODO, ~3 min. neatlogs -> Traces -> open each -> Share -> copy link, then give the
+   links to the agent (they go into `shared_traces`, and /judges shows them):
+   `a3018a6313414b1ad77c8db639be57f0`, `29c2dee743f80c15c5e43f9f2b231bdb`, `59a1c806c9921f4fe1723f14518702da`.
+4. **neatlogs incidents: mark the fixed ones Resolved** — optional, ~2 min. The public API can only publish
+   incident snapshots; "Resolved" is a dashboard action. The 6 under "Investigated" are the clusters PaperCI
+   closed with an empty snapshot after a fix (titles say "fixed in <commit>, none since" or "no unrecovered
+   occurrences"). Open each and mark it Resolved. Leave the 3 Open ones (missing_module, turn_budget_exhausted,
+   data_missing): they are live agent-behaviour clusters that feed the evolution loop.
+5. **Entire: GitHub app connected?** — check, ~2 min. https://entire.io -> repo `isHeSatoshi/paperci` -> a recent
+   commit -> checkpoint loads. If not: sign in with GitHub, install the Entire GitHub App on the repo.
+6. **Final submission** (7:00-11:55 PM IST) — TODO. Quote the official neatlogs post on X with: team, project
+   name (PaperCI), repo https://github.com/isHeSatoshi/paperci, demo video link, and
+   https://paperci.vercel.app/judges. The agent is not allowed to post or submit for you.
 
-## B2. Approve or reject evolved control policies — when the board says one is waiting, ~5 min
-The nightly evolution loop (`docs/evolution.md`) adopts playbooks on its own, but a rewritten builder
-control policy (code) only goes live after you approve it. Read the file first.
+Done already: building-in-public post (https://x.com/isHeSatoshi/status/2109565183140274613, linked on /judges),
+app open to the public, spend ceilings sized for the Factory key, invite codes removed.
+
+## Only if the board asks: approve or reject an evolved control policy, ~5 min
+Playbooks are adopted automatically; a rewritten builder policy (code) waits for you. None is waiting now.
 ```
 ssh -i $env:USERPROFILE\.ssh\paperci_aws ubuntu@44.215.70.124
 cd ~/paperci; .venv/bin/python -m paperci.evolve pending      # id, bench score, file path
 less data/evolve/candidates/<id>/builder_policy.py             # read what it does
 .venv/bin/python -m paperci.evolve approve <id>                # or: reject <id>
 ```
-The canary rolls an approved policy back automatically if live build rates drop afterwards.
 
-## B3. ICML eval results — optional, look when you like
-https://paperci.vercel.app/icml lists every ICML 2026 paper PaperCI ran, by name, next to the Hugging Face
-community verdict. Nothing to review: the community consensus is the answer key. Details: `docs/icml-eval.md`.
-
-## B4. Factory API key — after the hackathon
-The key was pasted in chat; it is only stored in `.env` here and on the server (both outside git, Entire
-redacts `fk-` keys). Revoke it at https://app.factory.ai/settings/api-keys when the event is over.
-
-## C. The cloud server — nothing to do, FYI
-It stops itself on 2026-10-16 23:59 IST. If you want it gone earlier (or after), run
-`python deploy/aws/provision.py down` with AWS credentials, or ask the agent to tear it down. Run
-`powershell -File scripts\pull_cloud.ps1` before that to keep a copy of everything it did.
-
-## 0. Disk space on C: (recommended) — TODO, ~10 min
-C: ran out of space during the run (Docker died). PaperCI's stale images were deleted, but Docker's disk file
-`%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` (39 GB) does not shrink on its own. To reclaim host space:
-Docker Desktop -> Settings -> Resources -> Advanced -> move "Disk image location" to D:, or quit Docker,
-run `wsl --shutdown`, then in an admin PowerShell `Optimize-VHD -Path <vhdx> -Mode Full` (needs Hyper-V tools).
-Also `uv cache prune` reclaims unused entries of the 60 GB uv cache (your call; not done by the agent).
-
-## 1. neatlogs CLI readback (device approval) — DONE (you approved it; CLI readback works)
-Needed so the agent can read traces back from the terminal (SDK ingestion already verified by Doctor probe).
-1. In PowerShell (Node 22 is installed):
-   `npm install --global neatlogs-cli`
-2. Run login without the SDK key in the environment:
-   ```
-   $k=$env:NEATLOGS_API_KEY; Remove-Item Env:NEATLOGS_API_KEY -ErrorAction SilentlyContinue
-   neatlogs --host https://app.neatlogs.com --profile setup-https---app-neatlogs-com auth login --device
-   ```
-3. Open the printed link in your browser, approve the code.
-4. Check: `neatlogs --host https://app.neatlogs.com --profile setup-https---app-neatlogs-com --project da3f6fba-4dfc-47d7-9960-3e3caedf7360 traces list --limit 5`
-5. Tell the agent "neatlogs CLI approved".
-
-## 2. neatlogs dashboard: grab the before/after trace links — OPTIONAL now
-Agent status: evidence is read back via the CLI into docs/evidence.md (IDs + numbers). The CLI cannot create
-share links (sharing is read-only) and the OAuth login has read scopes only, so tagging/commenting traces
-returned FORBIDDEN. neatlogs ingestion is also currently degraded (Doctor probe: TRACE_READBACK_TIMEOUT at
-pii_redaction); details for the neatlogs team in `docs/neatlogs-feedback.md` (worth posting in their Discord).
-If you ever want links/screenshots for the video, the steps are:
-1. Open https://app.neatlogs.com -> project -> Traces.
-2. Search for these trace IDs (all listed in `docs/evidence.md`):
-   - BEFORE (held-out, v1): `294209f0b2d1b60bfc1509fdbece2f1b`
-   - AFTER (same paper, v2): `4e85d604ac7a5d343950ee923f573502`
-   - Failure + recovery (chaos): `14ed5fe7f083b2b1ff4c98fbbf705223`
-3. Copy each share link (or take a screenshot) and paste it into `hackathon.md` (Results) next to the ID.
-   Note: some traces show `dlq` finalization in neatlogs (documented in evidence.md section 6). The chaos
-   trace is one of them. If it does not render, show the recovery from `docs/evidence.md` section 4 and
-   `runs/logs/dev-chaos.log` instead, and consider reporting the DLQ to neatlogs in Discord.
-
-## 3. Entire: connect the GitHub repo — TODO if not done yet, ~5 min
-The repo is pushed to https://github.com/isHeSatoshi/paperci (public after the final secret scan) with the
-`entire/checkpoints/v1` ref. Checkpoint IDs and commit links are in hackathon.md ("Entire checkpoints").
-1. Go to https://entire.io -> Sign in with GitHub (account `isHeSatoshi`) -> authorize the Entire GitHub App.
-2. Install the Entire GitHub App on the account/org that owns the PaperCI repo (onboarding prompts you). Select the `paperci` repository.
-3. Back in the terminal: `cd D:\Project\neathack; entire status` should show checkpoints syncing after the next `git push`.
-4. Open repo -> branch `main` -> the commit listed in hackathon.md -> checkpoint. Confirm Sessions and Changes tabs load.
-5. The shareable link format is `https://entire.io/gh/OWNER/REPO/commit/FULL_SHA` (exact link prepared in hackathon.md).
-
-## 4. cfo.ai business plan — TODO, ~20 min
-1. Sign up at https://cfo.ai/neathacks (card required). IMMEDIATELY go to Settings -> Billing -> cancel subscription (per hackathon page; you won't be billed).
-2. Create a new plan "PaperCI". Enter the numbers from `docs/unit-economics.md`, section "cfo.ai entry sheet" (COGS ~$0.21 per attempt measured+assumed, 5 attempts per validated task on held-out, pricing hypotheses, $300/month infra, 2 founders). Mark prices as hypotheses.
-3. Export/share the plan (PDF or link) and save it as `docs/cfo-plan.pdf` (or paste the link into hackathon.md, Submission section).
-
-## 4b. Try the product yourself — 5 min (+ a 10-20 min run)
-1. `cd D:\Project\neathack; .venv\Scripts\python.exe -m paperci.web` and open http://127.0.0.1:8000
-2. Submit with your email + an arXiv link or a paper file (PDF / LaTeX .tex or source .zip/.tar.gz / .docx / HTML / MD) + the GitHub repo.
-3. Talk to the agent in the chat (or click "Go ahead with your plan"). Each run spends about $0.15-0.30 of the LLM key;
-   the app refuses new submissions once total spend passes $15 (`PAPERCI_WEB_SPEND_CAP`).
-4. Emails are written to `registry/web/outbox/*.eml` (no mail provider is connected). To make it public you would need
-   hosting + a mail provider; the app binds to localhost only on purpose.
-
-## 5. Demo video — TODO, ~30 min
-Script and shot list: `docs/demo-script.md`. Record screen + voice, 3-4 minutes. Use the public (anonymized) dashboard `docs/dashboard_public.html` on screen, not the private one, so no verdict about a named paper is published.
-
-## 6. Building in public posts — TODO
-Drafts in `docs/posts.md` (tagged #neatHack). Post them yourself on X/LinkedIn/Discord #neatHack and paste the links into hackathon.md.
-
-## 7. Final submission (Mon 2026-10-12, 7:00-11:55 PM IST) — TODO
-Quote the official neatlogs post on X with: team, project name, public repo URL, demo video link. (Agent is not authorized to post or submit.)
+## After the event
+- Revoke the Factory API key: https://app.factory.ai/settings/api-keys (it was pasted in chat; stored only in
+  `.env` here and on the server).
+- Revoke the neatlogs service token `paperci-server-b` (neatlogs -> service accounts -> paperci-server); it expires
+  on its own around 19 Oct.
+- Revoke the GitHub token used for pushes.
+- The AWS server stops itself on 2026-10-16 23:59 IST. To keep a copy first: `powershell -File scripts\pull_cloud.ps1`.
+  To remove it: `python deploy/aws/provision.py down`.
+- Optional disk cleanup on C: Docker's `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` does not shrink on its
+  own (Docker Desktop -> Settings -> Resources -> Advanced -> move the disk image to D:).
