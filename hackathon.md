@@ -174,6 +174,23 @@
   unrecovered builder failure category as a native neatlogs incident linked to its traces, after each job.
   First publish: 11 incidents. Trace feedback and comments need a user login, so the server does not post them.
 
+### 2026-10-12 (Mon) 12:30-14:00 IST: what neatlogs found, and the judges page
+- Triaged every Execution Failed hit, detection hit and incident since the tracing fix (5 traces, 12 clusters).
+  Three were PaperCI bugs and are fixed: (1) `ValueError: No closing quotation`, the pip bookkeeping crashed 4
+  builds across 3 evolution rounds on an unbalanced quote, so candidates were scored on our bug; any harness error
+  in one tool call now costs a turn, not the build. (2) A verifier false positive: drivers written with a shell
+  heredoc were invisible to the repo-code-path check; re-checking all 18 flagged runs cleared 2, one of which had
+  tripped a playbook candidate in round 0437. (3) Google Drive was not allowlisted, so a bench paper's data could
+  never download. Two flags were correct (an agent simulated data; an R-only repo), one is agent behaviour for
+  evolution. Incidents for fixed patterns now close with the fix commit named.
+- Night watch also found: every deploy reset the learned playbook to the committed generation (so ICML pass 2
+  ran without the adopted playbooks), and the orphan sweep missed sandboxes of killed jobs. Both fixed.
+- ICML pass 2 finished: flat against pass 1 (built 11 vs 11, reduced-scale claims 8/16 vs 8/22, no full-scale
+  verdicts), explained by the playbook reset above.
+- `/judges`: PaperCI run on its own submission; each official evidence row is a claim re-checked live (git,
+  neatlogs API, run DB), with a verify command and what it does not show, plus the neatlogs triage table with
+  live "since the fix" counts, a mirrored trace and `judges.json`. Demo script: `docs/demo-script.md`.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).

@@ -10,6 +10,10 @@ paper's authors._
 [Live board](https://paperci.vercel.app/board) · [ICML 2026 results, by paper](https://paperci.vercel.app/icml) ·
 [Technical write-up](TECHNICAL_WRITEUP.md)
 
+**Judges: [paperci.vercel.app/judges](https://paperci.vercel.app/judges)** runs PaperCI's own rule on this
+submission: each official evidence row is a claim, re-checked live against git, the neatlogs API and the agent's
+run database, with what it does not prove. It also lists every neatlogs flag and what it turned out to be.
+
 ![Taking the paper's numbers on trust vs PaperCI's agent verifying each claim in your paper by rebuilding the repo in a sandbox](docs/img/memes/code-available.png)
 
 A pull request gets a bot that runs the tests on every change. A paper gets expert reviewers, and that review
@@ -88,6 +92,19 @@ agreed (47 verified, 69 falsified), rerun 18 of them blind on a CPU (no agent se
 publish every result by paper name: **[paperci.vercel.app/icml](https://paperci.vercel.app/icml)**. Caveats:
 the community had GPUs, and their judge (GLM-5.2) is the same model family as our verifier.
 
+| 18 blind ICML papers | Pass 1 | Pass 2 |
+| --- | --: | --: |
+| Built and ran offline | 11 | 11 |
+| Reduced-scale runs | 7 | 9 |
+| Reduced-scale claims matched | 8/16 | 8/22 |
+| Full-scale verdicts | 0 | 0 |
+| Builder turns per paper | 12.5 | 15.4 |
+
+Flat, and we say why: pass 2 was meant to measure the overnight self-improvement, but our own night watch found
+that every deploy had reset the learned playbook to the committed generation, so pass 2 ran without the adopted
+playbooks (fixed: deploys now keep learned state). No full-scale verdict yet: these papers' full runs need
+GPUs; on a 2-CPU box PaperCI gets reduced-scale evidence or an honest "no decision".
+
 ## Where this goes
 
 Today PaperCI verifies claims that deterministic code can re-derive on a CPU in minutes. The same loop (seal
@@ -144,11 +161,16 @@ span for each stage, LLM call and sandbox tool, plus token counts. Builder syste
 neatlogs prompts, one version per playbook generation. A failed run is marked ERROR, so the built-in "Execution
 Failed" detection fires. Six PaperCI detections flag budget run-outs, integrity flags, refused hosts, rejected dry
 runs, honest give-ups and verified claims. After each job, a service account publishes every unrecovered builder
-failure category as a native neatlogs incident that links to the traces behind it, and an incident goes quiet once
-the category stops failing. neatlogs shows what is failing; PaperCI's evolution loop writes the fix and proves it
-on the benchmark. **Entire** captures the build sessions as checkpoints on commits. **cfo.ai** was used for the business plan
-([unit economics](docs/unit-economics.md)). LLMs: DeepSeek V4.1 Flash (builder) and GLM-5.3-Flash (verifier and
-always-on roles) through the Factory API; earlier runs used Claude and Amazon Nova.
+failure category as a native neatlogs incident that links to the traces behind it. When a fix for a failure
+pattern is deployed, its incident closes with the fix commit named. neatlogs found three real bugs this way in
+one morning: a quoting crash in the builder harness, a verifier false positive on heredoc-written drivers, and
+Google Drive missing from the allowlist ([the triage, measured live](https://paperci.vercel.app/judges#loop)).
+
+**Entire** records the coding session behind each commit as a checkpoint, so every fix in that triage table
+links the commit and the session that reasoned about it. **cfo.ai** models the business plan from the measured
+[unit economics](docs/unit-economics.md); the plan link is on [/judges](https://paperci.vercel.app/judges).
+LLMs: DeepSeek V4.1 Flash (builder) and GLM-5.3-Flash (verifier and always-on roles) through the Factory API;
+earlier runs used Claude and Amazon Nova.
 
 More: [ICML eval](docs/icml-eval.md) · [Evolution](docs/evolution.md) · [Cloud](docs/cloud.md) ·
 [Evidence](docs/evidence.md) · [Landscape](docs/landscape.md) · [Earlier example reviews](docs/reviews/index.html)
