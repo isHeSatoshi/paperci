@@ -326,7 +326,9 @@ def test_background_queues_alternate():
     import time
     from paperci import evolve, icml_eval, ops
     saved = (ops.enabled, ops._load, evolve.due_new_round, evolve.has_pending, icml_eval.golden_pending,
-             icml_eval.has_pending, ops.NIGHTLY_HOUR)
+             icml_eval.has_pending, ops.NIGHTLY_HOUR, ops.DEPLOYING)
+    # deploy.sh runs these tests while holding the real deploying flag, which correctly pauses due().
+    ops.DEPLOYING = ops.OPS / "deploying-test-absent"
     st = {"nightly_day": time.strftime("%Y-%m-%d", ops._local())}
     ops.enabled, ops._load = (lambda: True), (lambda p: st)
     evolve.due_new_round, evolve.has_pending = (lambda: False), (lambda: True)
@@ -346,7 +348,7 @@ def test_background_queues_alternate():
         if prio is not None:
             os.environ["PAPERCI_ICML_PRIORITY"] = prio
         (ops.enabled, ops._load, evolve.due_new_round, evolve.has_pending, icml_eval.golden_pending,
-         icml_eval.has_pending, ops.NIGHTLY_HOUR) = saved
+         icml_eval.has_pending, ops.NIGHTLY_HOUR, ops.DEPLOYING) = saved
 
 
 def test_auto_submit_at_turn_limit():
@@ -453,13 +455,15 @@ def test_harness_survives_odd_commands_and_finds_heredoc_drivers(tmp=Path(__file
 def test_no_job_starts_during_a_deploy():
     import os
     from paperci import ops
-    old = os.environ.get("PAPERCI_AUTOPILOT")
+    old, real = os.environ.get("PAPERCI_AUTOPILOT"), ops.DEPLOYING
     os.environ["PAPERCI_AUTOPILOT"] = "1"
+    ops.DEPLOYING = ops.OPS / "deploying-test"  # never touch the real flag a running deploy.sh holds
     try:
         ops.DEPLOYING.touch()
         assert ops.due() is None
     finally:
         ops.DEPLOYING.unlink(missing_ok=True)
+        ops.DEPLOYING = real
         if old is None:
             os.environ.pop("PAPERCI_AUTOPILOT", None)
         else:
