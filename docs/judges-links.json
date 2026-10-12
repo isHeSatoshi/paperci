@@ -2,6 +2,11 @@
   "cfo_url": "",
   "demo_url": "",
   "posts": ["https://x.com/isHeSatoshi/status/2109565183140274613"],
-  "shared_traces": {},
+  "shared_traces": {
+    "a3018a6313414b1ad77c8db639be57f0": "https://app.neatlogs.com/traces/a3018a63-1341-4b1a-d77c-8db639be57f0",
+    "29c2dee743f80c15c5e43f9f2b231bdb": "https://app.neatlogs.com/traces/29c2dee7-43f8-0c15-c5e4-3f9f2b231bdb",
+    "59a1c806c9921f4fe1723f14518702da": "https://app.neatlogs.com/traces/59a1c806-c992-1f4f-e172-3f14518702da"
+  },
+  "traces_public": false,
   "mirror_trace": ""
 }

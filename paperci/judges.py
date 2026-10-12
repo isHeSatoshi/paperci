@@ -279,11 +279,12 @@ def checks(d: dict) -> list[dict]:
     p1, p2 = ic.get("p1") or {}, ic.get("p2") or {}
     adopted = ", ".join(f"{a['kind']} {a['cid']} ({a['delta']:+.2f})" for a in ev.get("adopted", []) if a.get("delta") is not None)
     shared = lk.get("shared_traces") or {}
+    access = "public" if lk.get("traces_public") else "neatlogs sign-in"
     out = []
 
     def tlink(tid: str) -> str:
         url = shared.get(tid)
-        return (f"<a href='{html.escape(url)}' target=_blank rel=noopener><code>{tid[:12]}</code></a> (public)" if url
+        return (f"<a href='{html.escape(url)}' target=_blank rel=noopener><code>{tid[:12]}</code></a> ({access})" if url
                 else f"<code title='{tid}'>{tid[:12]}</code>")
 
     out.append({
@@ -528,7 +529,8 @@ def render(d: dict) -> str:
     mirror = nl.get("mirror")
     share = (d.get("links") or {}).get("shared_traces") or {}
     wf = _waterfall(mirror) if mirror else f"<p class=muted>Trace mirror unavailable: {e(nl.get('mirror_error') or nl.get('error') or 'no trace yet')}</p>"
-    pub = (" Public neatlogs links: " + ", ".join(f"<a href='{e(u)}' target=_blank rel=noopener>{e(t[:12])}</a>" for t, u in share.items())
+    pub = ((" Public neatlogs links: " if (d.get("links") or {}).get("traces_public") else
+            " neatlogs dashboard links (sign-in required): ") + ", ".join(f"<a href='{e(u)}' target=_blank rel=noopener>{e(t[:12])}</a>" for t, u in share.items())
            if share else "")
     tour = [("30%", "The agent", "#improved", "A full paper-to-verdict run, self-improving and self-healing, 24/7 on AWS"),
             ("25%", "neatlogs, Entire, cfo.ai", "#neatlogs", "Eyes, memory and wallet of one loop (below)"),
