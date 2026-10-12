@@ -518,7 +518,9 @@ headline claim against what your code actually produces, before reviewers or rea
 <div id=pa><input type=text name=arxiv placeholder="https://arxiv.org/abs/2610.01234" value="{e(arxiv)}" style="margin-top:10px"></div>
 <div id=pp style="display:none;margin-top:10px"><label class=drop id=dz><input type=file name=paper accept=".pdf,.tex,.zip,.tar,.gz,.tgz,.docx,.md,.txt,.html,.htm" style="display:none" onchange="picked(this)">
 <span id=dzt>Drop your paper here or click to choose<br><span class=muted>PDF, LaTeX (.tex or source .zip/.tar.gz), Word .docx, HTML, Markdown, text · max 25 MB</span></span></label></div>
-<label>Code repository</label><input type=url name=repo placeholder="https://github.com/you/your-paper-code (found automatically if linked)" value="{e(repo)}">
+<label>Code repository <span class=opt>(optional)</span></label>
+<div class=mq><input type=url name=repo placeholder=" " aria-label="Code repository (optional)" value="{e(repo)}">
+<div class=mqt aria-hidden=true><span>Found automatically if your paper links its code &middot; or paste https://github.com/you/your-paper-code &middot;&nbsp;</span><span>Found automatically if your paper links its code &middot; or paste https://github.com/you/your-paper-code &middot;&nbsp;</span></div></div>
 {'<label>Invite code</label><input type=text name=invite required placeholder="early-access code" autocomplete=off>' if INVITES else ''}
 <label class=chk><input type=checkbox name=consent required> I am an author (or have permission) and agree that PaperCI runs this public code in an isolated sandbox.</label>
 <button class=btn id=sb>Start verification</button>{err}
