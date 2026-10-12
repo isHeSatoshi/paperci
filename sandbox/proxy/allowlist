@@ -16,6 +16,8 @@
 ^[a-z0-9-]+\.aws\.cdn\.hf\.co$
 ^transfer\.xethub\.hf\.co$
 ^zenodo\.org$
+^drive\.google\.com$
+^drive\.usercontent\.google\.com$
 ^archive\.ics\.uci\.edu$
 ^ossci-datasets\.s3\.amazonaws\.com$
 ^www\.cs\.toronto\.edu$

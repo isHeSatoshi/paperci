@@ -421,6 +421,31 @@ def test_neatlogs_incident_snapshots():
     assert nl_api.publish_incidents()["skipped"] if not nl_api.enabled() else True
 
 
+def test_harness_survives_odd_commands_and_finds_heredoc_drivers(tmp=Path(__file__).parent / "_tmp_drv"):
+    import json as _json
+    import shutil
+    from paperci.stages.builder import _pip_packages
+    from paperci.stages.verifier import code_path_used, with_drivers
+    # An unbalanced quote on a pip line crashed four evolution builds (neatlogs: ValueError: No closing quotation).
+    assert _pip_packages("pip install numpy 'scipy") == ["numpy"]
+    assert _pip_packages('pip install "torch==2.3" tqdm') == ["torch", "tqdm"]
+    # A driver written with a shell heredoc that imports the repo's module is running the repo's code.
+    tmp.mkdir(exist_ok=True)
+    try:
+        tree = [{"path": "real_data_har.py"}, {"path": "README.md"}]
+        script = "#!/bin/bash\ncd /work\npython3 /work/har_repro.py\n"
+        assert not code_path_used(with_drivers(script, tmp), tree)
+        cmd = ("cat > /work/har_repro.py <<'EOF'\nimport sys\nsys.path.insert(0, '/work/repo')\n"
+               "import real_data_har as R\nR.run()\nEOF\npython3 /work/har_repro.py")
+        (tmp / "commands.json").write_text(_json.dumps([cmd]), encoding="utf-8")
+        assert code_path_used(with_drivers(script, tmp), tree)
+        # The final /work snapshot wins over earlier versions of the same file.
+        (tmp / "drivers.json").write_text(_json.dumps({"/work/har_repro.py": "print(0.5)\n"}), encoding="utf-8")
+        assert not code_path_used(with_drivers(script, tmp), tree)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_sandbox_owner_label():
     from paperci.sandbox import owner_alive, owner_label
     assert owner_alive("") is None and owner_alive("123:?") is None

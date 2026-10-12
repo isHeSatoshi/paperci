@@ -88,12 +88,31 @@ def _redact(text: str, values: list[float]) -> str:
 
 
 _PIP_RE = re.compile(r"pip3?\s+install\s+([^;&|\n]+)")
+_DRIVER_SNAPSHOT = """
+import json, os
+out, size = {}, 0
+for root, dirs, files in os.walk('/work'):
+    dirs[:] = [d for d in dirs if not (root == '/work' and d == 'repo') and not d.startswith('.')
+               and d not in ('__pycache__', 'venv', 'site-packages', 'node_modules')]
+    if root.count('/') > 4:
+        dirs[:] = []
+    for f in files:
+        p = os.path.join(root, f)
+        if f.endswith(('.py', '.sh')) and os.path.getsize(p) < 200000 and len(out) < 60 and size < 400000:
+            out[p] = open(p, errors='replace').read()
+            size += len(out[p])
+print(json.dumps(out))
+"""
 
 
 def _pip_packages(cmd: str) -> list[str]:
     pkgs = []
     for m in _PIP_RE.finditer(cmd):
-        for tok in shlex.split(m.group(1), posix=True) if m.group(1).count('"') % 2 == 0 else m.group(1).split():
+        try:
+            toks = shlex.split(m.group(1), posix=True)
+        except ValueError:  # unbalanced quotes elsewhere on the line (an apostrophe in a heredoc) crashed whole builds
+            toks = m.group(1).split()
+        for tok in toks:
             if tok.startswith("-") or "/" in tok or tok.endswith(".txt") or tok == ".":
                 continue
             name = re.split(r"[<>=!~\[;]", tok)[0].strip().lower()
@@ -387,8 +406,20 @@ class Builder:
                     args = {}
                 with tracing.span(f"tool:{c.function.name}", kind="TOOL", turn=self.turn,
                                   args=json.dumps(args)[:1500]) as ts:
-                    obs, done = self._tool(c.function.name, args)
+                    try:
+                        obs, done = self._tool(c.function.name, args)
+                    except (SandboxError, ledger.BudgetExceeded):
+                        raise
+                    except Exception as e:
+                        # A harness bug in handling one tool call (bad argument types, bookkeeping) must cost the
+                        # agent a turn, not the whole build.
+                        obs, done = f"error: the harness could not process this call ({type(e).__name__}: {e}); adjust it and retry", False
+                        fid = db.log_failure(self.arxiv_id, self.run_label, "builder.harness", "harness_error",
+                                             f"{c.function.name}: {type(e).__name__}: {e}"[:500], trace_id=tracing.current_trace_id())
+                        self.failures.append({"phase": "harness", "category": "harness_error", "failure_id": fid, "turn": self.turn})
+                        tracing.fail(ts, f"harness error: {type(e).__name__}: {e}")
                     tracing.set_attr(ts, "observation", obs[:1500])
+                    tracing.io(ts, inp=args, out=obs[:3000])
                 messages.append({"role": "tool", "tool_call_id": c.id, "content": obs})
                 finished = finished or done
             if finished:
@@ -430,6 +461,14 @@ class Builder:
                                timeout=120, quiet=True).output
                 (self.dir / "repo.diff").write_text(diff, encoding="utf-8", newline="\n")
                 (self.dir / "writes.json").write_text(json.dumps(self.writes, indent=1), encoding="utf-8", newline="\n")
+                # Final contents of the scripts the agent left outside the repo, however they were made (write_file,
+                # heredoc, cp, download): the verifier reads them to see whether the run reaches the repo's code.
+                drv = sb.exec("python3 -c " + shlex.quote(_DRIVER_SNAPSHOT), timeout=60, quiet=True).output
+                line = next((ln for ln in drv.splitlines() if ln.startswith("{")), "")
+                try:
+                    (self.dir / "drivers.json").write_text(json.dumps(json.loads(line), indent=1), encoding="utf-8", newline="\n")
+                except ValueError:
+                    pass
                 (self.dir / "commands.json").write_text(json.dumps(self.commands, indent=1), encoding="utf-8", newline="\n")
                 (self.dir / "actions.json").write_text(json.dumps(self.actions, indent=1), encoding="utf-8", newline="\n")
                 res["egress"] = egress_since(sb.started_at - 5, sb.ip())

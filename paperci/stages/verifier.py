@@ -104,14 +104,29 @@ def code_path_used(script: str, tree: list[dict]) -> bool:
     return False
 
 
+_HEREDOC = re.compile(r"cat\s*>\s*['\"]?(/work/[^\s'\"<>]+)['\"]?\s*<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)\n\s*\2\b", re.S)
+
+
 def with_drivers(script: str, build_dir: Path) -> str:
     """The run script plus the builder-written files it invokes (e.g. `python /work/driver.py`), so a driver
-    that imports the repo's package counts as running the repo's code."""
+    that imports the repo's package counts as running the repo's code. Files come from write_file calls, from
+    `cat > file <<EOF` in shell commands, and (newest builds) from the final /work snapshot, which wins."""
+    latest: dict[str, str] = {}
     try:
         writes = json.loads((build_dir / "writes.json").read_text(encoding="utf-8", errors="replace"))
+        latest.update({w["path"]: w.get("content") or "" for w in writes if isinstance(w, dict) and w.get("path")})
     except Exception:
-        return script
-    latest = {w.get("path"): w.get("content") or "" for w in writes if isinstance(w, dict) and w.get("path")}
+        pass
+    try:
+        for cmd in json.loads((build_dir / "commands.json").read_text(encoding="utf-8", errors="replace")):
+            for m in _HEREDOC.finditer(str(cmd)):
+                latest[m.group(1)] = m.group(3)
+    except Exception:
+        pass
+    try:
+        latest.update(json.loads((build_dir / "drivers.json").read_text(encoding="utf-8", errors="replace")))
+    except Exception:
+        pass
     extra = [body for path, body in latest.items()
              if not path.endswith("paperci_run.sh") and re.search(rf"(?:^|[\s/'\"]){re.escape(path.split('/')[-1])}\b", script)]
     return script + "\n" + "\n".join(extra)
@@ -120,7 +135,7 @@ def with_drivers(script: str, build_dir: Path) -> str:
 def integrity(build_dir: Path, claims: list[Claim], runs: list[dict], egress: dict, tree: list[dict] | None = None) -> dict:
     """Hardcoded numbers, prebuilt results, replay of precomputed results, no repo code path, egress."""
     authored = ""
-    for name in ("paperci_run.sh", "writes.json", "commands.json"):
+    for name in ("paperci_run.sh", "writes.json", "commands.json", "drivers.json"):
         f = build_dir / name
         if f.exists():
             authored += f.read_text(encoding="utf-8", errors="replace") + "\n"
