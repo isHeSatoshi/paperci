@@ -210,6 +210,13 @@ def run_due(kind: str) -> None:
             cycle()
     finally:
         beat()
+        try:
+            from . import nl_api
+            r = nl_api.publish_incidents()
+            if r.get("errors"):
+                event("error", f"neatlogs incident publish failed: {r['errors'][0][:200]}", component="neatlogs")
+        except Exception as ex:
+            event("error", f"neatlogs incident publish failed: {type(ex).__name__}", component="neatlogs")
 
 
 PREEMPTED = 130

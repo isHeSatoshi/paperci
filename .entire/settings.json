@@ -11,7 +11,8 @@
     "custom_redactions": {
       "factory_api_key": "fk-[A-Za-z0-9_-]{20,}",
       "github_pat": "github_pat_[A-Za-z0-9_]{20,}",
-      "github_token": "gh[pousr]_[A-Za-z0-9]{20,}"
+      "github_token": "gh[pousr]_[A-Za-z0-9]{20,}",
+      "neatlogs_service_token": "nlsa_[A-Za-z0-9_.-]{20,}"
     },
     "pii": {
       "enabled": true,

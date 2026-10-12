@@ -101,7 +101,7 @@ AI evaluation moves from writing benchmarks to verifying them. PaperCI does the 
 
 ## It improves and heals itself
 
-- **Improves.** Every night it reads its own failures from the neatlogs traces and proposes new recovery rules,
+- **Improves.** Every night it reads its own classified failures (each linked to its neatlogs trace) and proposes new recovery rules,
   a rewritten control policy, and rules learned from community logbooks of other papers. Each candidate runs
   for real on a fixed benchmark against the current version and is kept only if it scores higher. Code changes
   also need a human `approve`, and the canary rolls back anything that makes live papers worse. The verifier,
@@ -120,7 +120,7 @@ uv pip install --python .venv/bin/python "neatlogs[openai]" openai pydantic requ
 cp .env.example .env                  # NEATLOGS_API_KEY, plus LITELLM_API_KEY or FACTORY_API_KEY
 docker build -t paperci/proxy:latest sandbox/proxy
 docker build -t paperci/sandbox:base sandbox/runner
-python tests/test_offline.py          # 15 offline checks, no API keys needed
+python tests/test_offline.py          # 18 offline checks, no API keys needed
 python -m paperci review 2507.12843   # one paper end to end, ends in a review page
 python -m paperci.web                 # the web app at http://127.0.0.1:8000
 ```
@@ -139,8 +139,14 @@ python -m paperci.web                 # the web app at http://127.0.0.1:8000
 
 ## Built with
 
-**neatlogs** traces every LLM call and stage, and the improver learns from those traces. **Entire** captures
-the build sessions as checkpoints on commits. **cfo.ai** was used for the business plan
+**neatlogs** is PaperCI's eyes. Every paper run is one trace (the paper goes in, the verdict comes out), with a
+span for each stage, LLM call and sandbox tool, plus token counts. Builder system prompts are versioned as
+neatlogs prompts, one version per playbook generation. A failed run is marked ERROR, so the built-in "Execution
+Failed" detection fires. Six PaperCI detections flag budget run-outs, integrity flags, refused hosts, rejected dry
+runs, honest give-ups and verified claims. After each job, a service account publishes every unrecovered builder
+failure category as a native neatlogs incident that links to the traces behind it, and an incident goes quiet once
+the category stops failing. neatlogs shows what is failing; PaperCI's evolution loop writes the fix and proves it
+on the benchmark. **Entire** captures the build sessions as checkpoints on commits. **cfo.ai** was used for the business plan
 ([unit economics](docs/unit-economics.md)). LLMs: DeepSeek V4.1 Flash (builder) and GLM-5.3-Flash (verifier and
 always-on roles) through the Factory API; earlier runs used Claude and Amazon Nova.
 

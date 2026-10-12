@@ -233,6 +233,9 @@ class Builder:
             with tracing.span("tool:dry_run_offline", kind="TOOL", attempt=self.submit_attempts) as s:
                 ok, obs, r = self._dry_run()
                 tracing.set_attr(s, "ok", ok)
+                tracing.io(s, inp="bash /work/paperci_run.sh (network disconnected)",
+                           out={"ok": ok, "exit_code": r.exit_code, "seconds": round(r.seconds, 1),
+                                "tail": r.output[-600:]})
             live.emit("ok" if ok else "fail", f"dry run {'accepted' if ok else 'REJECTED, agent must fix it'} "
                                               f"({r.seconds:.0f}s)", indent=2)
             if ok:
@@ -260,12 +263,14 @@ class Builder:
         # One neatlogs prompt version per distinct system prompt (playbook generation x controller), so the
         # dashboard can compare cost/turns/outcome across what the agent learned.
         pv = tracing.register_prompt(
-            "paperci-builder-system", self.system, labels=(f"gen-{gen}", self.variant),
+            "paperci-builder-system", self.system, label=self.variant, tags=(f"gen-{gen}",),
             note=f"playbook generation {gen}, variant {self.variant}",
             config={"model": MODELS["builder"], "playbook_generation": gen, "variant": self.variant,
                     "policy": self.policy.id})
         prompt = {"system_prompt_template": self.system, "version": str(pv)} if pv else None
-        with tracing.span("stage:builder", kind="AGENT", prompt=prompt, arxiv_id=self.arxiv_id, variant=self.variant,
+        inp = {"arxiv_id": self.arxiv_id, "title": self.paper.get("title"), "repo": self.paper.get("repo_url"),
+               "task": "rebuild the repository in a sandbox and write an offline run script for the sealed claims"}
+        with tracing.span("stage:builder", kind="AGENT", prompt=prompt, inp=inp, arxiv_id=self.arxiv_id, variant=self.variant,
                           model=MODELS["builder"], playbook_generation=gen, prompt_version=pv or 0,
                           policy_id=self.policy.id, policy_origin=self.policy.origin) as span:
             image = (self.recovery.playbook.image if self.recovery.enabled else "") or SANDBOX_IMAGE
@@ -473,4 +478,13 @@ class Builder:
                 tracing.set_attr(span, k, res[k])
         tracing.set_attr(span, "failure_classes", [f["category"] for f in self.failures])
         tracing.set_attr(span, "recovered_failures", sum(1 for f in self.failures if f["recovered"]))
+        classes = sorted({f["category"] for f in self.failures})
+        tracing.io(span, out={"status": res["status"], "turns": self.turn, "scale": res.get("scale"),
+                              "give_up_category": res.get("give_up_category"),
+                              "reason": str(res.get("reason") or res.get("notes") or "")[:600],
+                              "failure_classes": classes,
+                              "unrecovered": sorted({f["category"] for f in self.failures if not f["recovered"]})})
+        # An honest give_up (needs a GPU, no code for the claim) is a correct answer, not a failed execution.
+        if res["status"] not in ("built", "gave_up"):
+            tracing.fail(span, f"builder {res['status']}: {str(res.get('reason', ''))[:300]}")
         (self.dir / "result.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8", newline="\n")

@@ -59,10 +59,11 @@ def delivery_problems() -> dict:
 _PROMPT_CACHE = Path(__file__).resolve().parent.parent / "data" / "neatlogs_prompts.json"
 
 
-def register_prompt(name: str, text: str, labels: tuple[str, ...] = (), note: str = "",
+def register_prompt(name: str, text: str, label: str = "", tags: tuple[str, ...] = (), note: str = "",
                     config: dict | None = None) -> int | None:
     """Store `text` as a versioned neatlogs prompt, once per distinct content. Never blocks a run for long
-    or fails it: prompt management is bookkeeping, not a dependency."""
+    or fails it: prompt management is bookkeeping, not a dependency. neatlogs accepts at most one label per
+    version (a ValueError otherwise), so anything else goes in tags."""
     if not _initialized or not os.environ.get("NEATLOGS_API_KEY"):
         return None
     sha = hashlib.sha256(text.encode()).hexdigest()[:16]
@@ -74,7 +75,8 @@ def register_prompt(name: str, text: str, labels: tuple[str, ...] = (), note: st
         return cache[name][sha]
 
     def create() -> int:
-        h = neatlogs.create_prompt(name=name, prompt=text, labels=list(labels), tags=["paperci"],
+        h = neatlogs.create_prompt(name=name, prompt=text, labels=[label] if label else [],
+                                   tags=["paperci", *tags],
                                    config={**(config or {}), "sha": sha}, commit_message=note or None)
         return int(h.version)
     ex = ThreadPoolExecutor(max_workers=1)
@@ -121,9 +123,12 @@ def _safe(v: Any) -> Any:
 
 
 @contextmanager
-def span(name: str, kind: str = "CHAIN", prompt: dict | None = None, **attrs: Any) -> Iterator[Any]:
+def span(name: str, kind: str = "CHAIN", prompt: dict | None = None, inp: Any = None,
+         **attrs: Any) -> Iterator[Any]:
     """Open a span; attributes are stamped as paperci.<key>. `prompt` passes neatlogs prompt-template fields
-    (system_prompt_template, version, ...) so LLM calls inside are linked to a prompt version."""
+    (system_prompt_template, version, ...) so LLM calls inside are linked to a prompt version. `inp` becomes
+    the span input; without one neatlogs shows the first captured log line as the trace input. An exception
+    leaving the span marks it ERROR (neatlogs.trace does not)."""
     nl: dict = dict(prompt or {})
     stack = ExitStack()
     if kind == "WORKFLOW":
@@ -135,9 +140,19 @@ def span(name: str, kind: str = "CHAIN", prompt: dict | None = None, **attrs: An
             s.set_attribute("neatlogs.tool.name", name.split(":", 1)[-1])
         for k, v in attrs.items():
             set_attr(s, k, v)
+        if inp is not None:
+            io(s, inp=inp)
         _root_stack.append(s)
         try:
             yield s
+        except BaseException as e:
+            if not isinstance(e, GeneratorExit):
+                fail(s, f"{type(e).__name__}: {e}")
+                try:
+                    s.record_exception(e)
+                except Exception:
+                    pass
+            raise
         finally:
             _root_stack.pop()
 
@@ -145,6 +160,32 @@ def span(name: str, kind: str = "CHAIN", prompt: dict | None = None, **attrs: An
 def set_attr(s: Any, key: str, value: Any) -> None:
     try:
         s.set_attribute(f"paperci.{key}", _safe(value))
+    except Exception:
+        pass
+
+
+def _text(v: Any, limit: int = 8000) -> str:
+    return (v if isinstance(v, str) else json.dumps(v, default=str))[:limit]
+
+
+def io(s: Any, inp: Any = None, out: Any = None) -> None:
+    """Span input/output in the neatlogs convention (input.value/output.value), which is what the trace list,
+    detections and evaluations read."""
+    try:
+        if inp is not None:
+            s.set_attribute("input.value", _text(inp))
+        if out is not None:
+            s.set_attribute("output.value", _text(out))
+    except Exception:
+        pass
+
+
+def fail(s: Any, reason: str) -> None:
+    """Mark a span ERROR so the platform's status-based detections ("Execution Failed") fire."""
+    try:
+        from opentelemetry.trace import Status, StatusCode
+        s.set_status(Status(StatusCode.ERROR, reason[:500]))
+        s.set_attribute("paperci.failure", reason[:500])
     except Exception:
         pass
 

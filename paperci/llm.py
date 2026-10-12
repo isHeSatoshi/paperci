@@ -189,6 +189,16 @@ def _factory_chat(model: str, messages: list[dict], tools: list | None, stage: s
             tracing.set_attr(s, "input_tokens", u.get("input_tokens"))
             tracing.set_attr(s, "output_tokens", u.get("output_tokens"))
             tracing.set_attr(s, "response", result[:3000])
+            # Standard neatlogs LLM fields, so token/cost/latency detections and the LLM view work for droid exec
+            # calls the SDK cannot auto-instrument.
+            tracing.io(s, inp=prompt[-6000:], out=result[:6000])
+            for k, v in (("neatlogs.llm.model_name", mid), ("neatlogs.llm.provider", "factory"),
+                         ("neatlogs.llm.token_count.prompt", int(u.get("input_tokens") or 0)),
+                         ("neatlogs.llm.token_count.completion", int(u.get("output_tokens") or 0)),
+                         ("neatlogs.llm.token_count.cache_read", int(u.get("cache_read_input_tokens") or 0)),
+                         ("neatlogs.llm.token_count.total", int(u.get("input_tokens") or 0) + int(u.get("output_tokens") or 0)),
+                         ("neatlogs.llm.metrics.duration_ms", int((time.time() - t0) * 1000))):
+                s.set_attribute(k, v)
     content, calls = result, None
     if tools:
         try:

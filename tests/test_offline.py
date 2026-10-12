@@ -374,6 +374,53 @@ def test_go_replies_start_the_run():
         assert not GO.match(t), t
 
 
+def test_failed_runs_are_marked_for_neatlogs():
+    from opentelemetry.trace import StatusCode
+    from paperci import tracing
+    from paperci.pipeline import run_problem
+    clean = {"verdict": "inconclusive", "integrity": {"flags": []}}
+    assert run_problem({"status": "max_turns"}, {**clean, "verdict": "blocked-infra"}) == "builder max_turns"
+    assert run_problem({"status": "gave_up"}, {**clean, "verdict": "blocked-infra"}) is None  # honest answer
+    assert run_problem({"status": "built"}, clean) is None
+    assert run_problem({"status": "built"}, {**clean, "verdict": "blocked-infra"}) == "offline verification run failed"
+    assert run_problem({"status": "built"}, {**clean, "integrity": {"flags": ["no_repo_code_path"]}}).startswith("integrity")
+
+    class Span:
+        def __init__(self):
+            self.attrs, self.status = {}, None
+
+        def set_attribute(self, k, v):
+            self.attrs[k] = v
+
+        def set_status(self, s):
+            self.status = s
+    s = Span()
+    tracing.io(s, inp={"arxiv_id": "x"}, out="done")
+    tracing.fail(s, "builder max_turns")
+    assert s.attrs["input.value"] == '{"arxiv_id": "x"}' and s.attrs["output.value"] == "done"
+    assert s.status.status_code == StatusCode.ERROR and s.attrs["paperci.failure"] == "builder max_turns"
+
+
+def test_neatlogs_incident_snapshots():
+    import time as _t
+    from paperci import db, nl_api
+    rows = [{"id": i, "ts": _t.time() - 60 * i, "arxiv_id": f"p{i % 3}", "run_label": "r", "stage": "builder.budget",
+             "category": "turn_budget_exhausted" if i < 4 else "egress_denied", "detail": "d", "trace_id": f"t{i}"}
+            for i in range(6)]
+    orig = db.q
+    db.q = lambda sql, args=(): rows
+    try:
+        snaps = {s["category"]: s for s in nl_api.snapshots()}
+    finally:
+        db.q = orig
+    tb = snaps["turn_budget_exhausted"]
+    assert tb["n"] == 4 and tb["papers"] == ["p0", "p1", "p2"] and len(tb["occurrences"]) == 4
+    assert {o["trace_id"] for o in tb["occurrences"]} == {"t0", "t1", "t2", "t3"}
+    assert len({o["source_event_id"] for o in tb["occurrences"]}) == 4 and "playbook" in tb["description"]
+    assert snaps["egress_denied"]["severity"] == "low" and len(tb["title"]) <= 240
+    assert nl_api.publish_incidents()["skipped"] if not nl_api.enabled() else True
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

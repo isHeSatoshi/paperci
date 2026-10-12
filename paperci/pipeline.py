@@ -10,6 +10,7 @@ import time
 import traceback
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from . import db, ledger, live, sources, tracing
 from .config import MODELS, ROBUST_RERUNS, RUNS_DIR, SOLVER_ATTEMPTS, STAGE_MAX_ATTEMPTS
@@ -116,7 +117,8 @@ def paper_row(arxiv_id: str) -> dict:
 def prepare(arxiv_id: str) -> dict:
     """Shared front half: snapshot -> triage -> sealed claims (no sandbox)."""
     paper = paper_row(arxiv_id)
-    with tracing.span(f"paper-prepare:{arxiv_id}", kind="WORKFLOW", arxiv_id=arxiv_id, split=paper["split"]) as root:
+    with tracing.span(f"paper-prepare:{arxiv_id}", kind="WORKFLOW", inp=_paper_input(arxiv_id, paper),
+                      arxiv_id=arxiv_id, split=paper["split"]) as root:
         tid = tracing.trace_id_of(root)
 
         def snap():
@@ -132,7 +134,28 @@ def prepare(arxiv_id: str) -> dict:
             out["n_claims"] = cl["n_claims"]
         db.set_paper(arxiv_id, status="prepared")
         tracing.set_attr(root, "triage", out["triage"])
+        tracing.io(root, out={"triage": out["triage"], "reason": str(tri.get("reason") or "")[:400],
+                              "verifiable_claims": out.get("n_claims")})
         return out
+
+
+def _paper_input(arxiv_id: str, paper: dict, **extra: Any) -> dict:
+    return {"arxiv_id": arxiv_id, "title": paper.get("title"), "repo": paper.get("repo_url"), **extra}
+
+
+_BUILD_FAILURES = {"max_turns", "wall_clock", "budget", "infra_error", "dry_run_failed", "error"}
+
+
+def run_problem(build: dict, dec: dict) -> str | None:
+    """Why this run counts as a failed execution, or None. Honest outcomes (a give_up with a reason, or a
+    falsified / inconclusive verdict on a clean run) are answers, not failures."""
+    if build.get("status") in _BUILD_FAILURES:
+        return f"builder {build['status']}"
+    if dec["integrity"]["flags"]:
+        return "integrity flags: " + ", ".join(dec["integrity"]["flags"])
+    if build.get("status") == "built" and dec["verdict"] == "blocked-infra":
+        return "offline verification run failed"
+    return None
 
 
 def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: list[str] | None = None) -> dict:
@@ -144,6 +167,8 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
         return {"skipped": "not prepared or no verifiable claims"}
     rdir = RUNS_DIR / arxiv_id.replace("/", "_") / label
     with tracing.span(f"paper:{arxiv_id}", kind="WORKFLOW", arxiv_id=arxiv_id, run_label=label,
+                      inp=_paper_input(arxiv_id, paper, run_label=label, variant=variant,
+                                       claims_to_check=len(cl.get("targets") or [])),
                       variant=variant, split=paper["split"], builder_model=MODELS["builder"]) as root:
         tid = tracing.trace_id_of(root)
         # Evaluation runs of candidate builder versions: build + one offline verification only, and they never
@@ -177,6 +202,11 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
                         per_claim[c.claim_id] = {"metric": c.metric, "extraction": ext,
                                                  "raw_values": [ext["value"]] if ext.get("found") else []}
                 tracing.set_attr(vs, "metrics_found", sum(1 for v in per_claim.values() if v["raw_values"]))
+                tracing.io(vs, inp={"image": build["image"], "sealed_claims": len(sealed)},
+                           out={"exit_code": runs[0]["exit_code"], "seconds": runs[0].get("seconds"),
+                                "metrics_found": sum(1 for v in per_claim.values() if v["raw_values"])})
+                if runs[0]["exit_code"] != 0:
+                    tracing.fail(vs, f"offline verification run exit code {runs[0]['exit_code']}")
                 return {"runs": runs, "per_claim": per_claim}
         ver = _run_stage(arxiv_id, "verify", label, verify, tid)
 
@@ -220,6 +250,11 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
                 tracing.set_attr(s, "integrity_flags", integ["flags"])
                 tracing.guardrail(s, {"integrity": integ["flags"], "egress_denied": integ["egress_denied"]},
                                   not integ["flags"], f"{v} ({conf}): {reason}")
+                tracing.io(s, inp={"build": build.get("status"), "offline_runs": len(rob["runs"]),
+                                   "claims_measured": sum(1 for p in per_claim.values() if p.get("raw_values"))},
+                           out={"verdict": v, "confidence": conf, "reason": reason, "integrity_flags": integ["flags"]})
+                if integ["flags"]:
+                    tracing.fail(s, "integrity flags: " + ", ".join(integ["flags"]))
             return {"verdict": v, "confidence": conf, "reason": reason, "integrity": integ, "per_claim": per_claim}
         dec = _run_stage(arxiv_id, "verdict", label, decide, tid)
         if not light:
@@ -257,8 +292,15 @@ def reproduce(arxiv_id: str, label: str, variant: str, hints: str = "", focus: l
         tracing.set_attr(root, "verdict", dec["verdict"])
         tracing.set_attr(root, "cost_usd", round(cost, 4))
         tracing.set_attr(root, "build_status", build.get("status"))
+        problem = run_problem(build, dec)
+        tracing.io(root, out={"verdict": dec["verdict"], "confidence": dec["confidence"], "reason": dec["reason"],
+                              "build": build.get("status"), "turns": build.get("turns"),
+                              "integrity_flags": dec["integrity"]["flags"], "cost_usd": round(cost, 4),
+                              "task": (pkg or {}).get("task_id"), "problem": problem})
+        if problem:
+            tracing.fail(root, problem)
         return {"verdict": dec["verdict"], "confidence": dec["confidence"], "build": build.get("status"),
-                "cost_usd": round(cost, 4), "trace_id": tid, "task": (pkg or {}).get("task_id")}
+                "cost_usd": round(cost, 4), "trace_id": tid, "task": (pkg or {}).get("task_id"), "problem": problem}
 
 
 def _apply_spec(spec: dict, arts: dict[str, str]) -> float | None:
