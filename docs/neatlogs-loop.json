@@ -34,7 +34,7 @@
     "found_by": "neatlogs detection: Execution Failed (integrity flag)",
     "traces": ["29c2dee743f80c15c5e43f9f2b231bdb"],
     "signal": "Verdict span ERROR with integrity flag no_repo_code_path on 2605.17126.",
-    "diagnosis": "False positive: the run's driver adds /work/repo to sys.path and imports the repo's real_data_har module, but it was written with a shell heredoc, and the verifier only looked at files written with write_file. Re-checking every flagged run cleared 2 of 18; one of them had made a playbook candidate trip the integrity tripwire in round 0437.",
+    "diagnosis": "False positive: the run's driver adds /work/repo to sys.path and imports the repo's real_data_har module, but it was written with a shell heredoc, and the verifier only looked at files written with write_file. Re-checking every flagged run cleared 2 of 18, and both mattered: they made the playbook candidate of round 0437 and the policy candidate of round 1108 trip the integrity tripwire, so the evolution loop rejected two candidates because of our verifier, not their behaviour.",
     "outcome": "fixed",
     "fix_subject": "Builder: a harness error in one tool call",
     "measure": {"kind": "static", "text": "2 of 18 past flags were false positives and were re-judged; 16 stand"}
@@ -68,6 +68,16 @@
     "outcome": "sent to evolution",
     "fix_subject": "",
     "measure": {"kind": "failures", "category": "turn_budget_exhausted", "like": "%"}
+  },
+  {
+    "id": "deploy-race",
+    "found_by": "neatlogs incident paperci:builder:TypeError",
+    "traces": ["06b33533406819a370acc27e007f4858"],
+    "signal": "register_prompt() got an unexpected keyword argument 'label', twice, at the exact minute of a deploy.",
+    "diagnosis": "Deploy race: a job started while deploy.sh was swapping the code, so it imported the old tracing module and the new builder. The worker now starts no job while a deploy is in progress.",
+    "outcome": "fixed",
+    "fix_subject": "Worker starts no job during a deploy",
+    "measure": {"kind": "failures", "category": "TypeError", "like": "%unexpected keyword argument%"}
   },
   {
     "id": "playbook-reset",

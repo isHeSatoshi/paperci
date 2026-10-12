@@ -450,6 +450,22 @@ def test_harness_survives_odd_commands_and_finds_heredoc_drivers(tmp=Path(__file
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_no_job_starts_during_a_deploy():
+    import os
+    from paperci import ops
+    old = os.environ.get("PAPERCI_AUTOPILOT")
+    os.environ["PAPERCI_AUTOPILOT"] = "1"
+    try:
+        ops.DEPLOYING.touch()
+        assert ops.due() is None
+    finally:
+        ops.DEPLOYING.unlink(missing_ok=True)
+        if old is None:
+            os.environ.pop("PAPERCI_AUTOPILOT", None)
+        else:
+            os.environ["PAPERCI_AUTOPILOT"] = old
+
+
 def test_sandbox_owner_label():
     from paperci.sandbox import owner_alive, owner_label
     assert owner_alive("") is None and owner_alive("123:?") is None

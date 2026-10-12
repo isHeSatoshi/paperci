@@ -19,6 +19,9 @@ healthy() { for _ in $(seq 1 30); do curl -sf -m 5 http://127.0.0.1:8000/healthz
 LEARNED=$(mktemp -d)
 cp -a data/playbook.json data/playbook_history "$LEARNED"/ 2>/dev/null || true
 reset_keep() { git reset -q --hard "$1" && cp -a "$LEARNED"/. data/; }
+# The worker starts no new job while this exists (paperci/ops.py due()); removed on every exit path.
+touch registry/ops/deploying
+trap 'rm -f registry/ops/deploying' EXIT
 rollback() {
   echo "!! $1 -> rolling back to ${GOOD:0:8}"
   reset_keep "$GOOD"

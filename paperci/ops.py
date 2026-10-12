@@ -125,8 +125,15 @@ def enabled() -> bool:
     return os.getenv("PAPERCI_AUTOPILOT") == "1"
 
 
+DEPLOYING = OPS / "deploying"
+
+
 def due() -> str | None:
     if not enabled():
+        return None
+    # deploy.sh swaps the code under a running worker; a job started then imports half old, half new modules
+    # (seen as "register_prompt() got an unexpected keyword argument"). A stale flag (crashed deploy) expires.
+    if DEPLOYING.exists() and time.time() - DEPLOYING.stat().st_mtime < 900:
         return None
     from . import ledger
     from . import evolve
