@@ -489,7 +489,7 @@ def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
 <div class=nav><a class=logo href="/">Paper<span>CI</span></a><div><a class=l href="/board">Live board</a><a class=l href="/#how">How it works</a>
-<a class=l href="/icml">ICML 2026 results</a><a class=l href="/examples/index.html">Earlier runs</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
+<a class=l href="/icml">ICML 2026 results</a><a class=l href="/judges"><b>For judges</b></a><a class=l href="/examples/index.html">Earlier runs</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
 {body}</body></html>""")
 
 
@@ -706,6 +706,19 @@ the paper was verified or falsified. PaperCI runs each one blind: no agent ever 
 code ran and was measured on a smaller setting (fewer steps, seeds or data) that fits a CPU; it is evidence that the
 code works, not a verdict on the paper's full-scale numbers.</p>{head}{queue}
 {''.join(cards) or "<p class=muted>The first results appear here as runs finish.</p>"}</div>""")
+
+
+@app.get("/judges", response_class=HTMLResponse)
+def judges_page():
+    from . import judges
+    return _page("PaperCI - evidence for judges", judges.render(judges.collect()))
+
+
+@app.get("/judges.json")
+def judges_json():
+    from . import judges
+    d = judges.collect()
+    return JSONResponse({**d, "checks": [{k: c[k] for k in ("id", "title", "rule", "status", "verify")} for c in judges.checks(d)]})
 
 
 @app.get("/icml/review")
