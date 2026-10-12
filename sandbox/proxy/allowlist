@@ -18,6 +18,7 @@
 ^zenodo\.org$
 ^drive\.google\.com$
 ^drive\.usercontent\.google\.com$
+^doc-[a-z0-9-]+-docs\.googleusercontent\.com$
 ^archive\.ics\.uci\.edu$
 ^ossci-datasets\.s3\.amazonaws\.com$
 ^www\.cs\.toronto\.edu$
