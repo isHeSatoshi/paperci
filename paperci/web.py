@@ -40,6 +40,7 @@ MAX_ATTEMPTS = 3
 # Public deployments gate submissions (each one spends real LLM budget and runs third-party code) behind invite codes.
 INVITES = {c.strip() for c in os.environ.get("PAPERCI_INVITE_CODES", "").split(",") if c.strip()}
 SUBMITS: dict[str, list[float]] = {}
+SUBMITS_PER_HOUR = int(os.environ.get("PAPERCI_SUBMITS_PER_HOUR", "10"))
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,24}$")
 LOCK = threading.Lock()
@@ -752,7 +753,7 @@ async def submit(request: Request, email: str = Form(...), arxiv: str = Form("")
     ip = (request.headers.get("x-vercel-forwarded-for") or request.headers.get("x-forwarded-for")
           or (request.client.host if request.client else "?")).split(",")[0].strip()
     recent = [t for t in SUBMITS.get(ip, []) if time.time() - t < 3600]
-    if len(recent) >= 3:
+    if len(recent) >= SUBMITS_PER_HOUR:
         return landing("Too many submissions from your network in the last hour. Please try again later.", email, arxiv, repo)
     SUBMITS[ip] = recent + [time.time()]
     if not EMAIL.match(email):
