@@ -421,6 +421,16 @@ def test_neatlogs_incident_snapshots():
     assert nl_api.publish_incidents()["skipped"] if not nl_api.enabled() else True
 
 
+def test_sandbox_owner_label():
+    from paperci.sandbox import owner_alive, owner_label
+    assert owner_alive("") is None and owner_alive("123:?") is None
+    if Path("/proc").is_dir():  # Linux (the server): a live owner, and a pid that cannot exist
+        assert owner_alive(owner_label()) is True
+        assert owner_alive("4194999:12345") is False
+    else:
+        assert owner_alive(owner_label()) is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

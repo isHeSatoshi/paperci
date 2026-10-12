@@ -449,15 +449,18 @@ def _check_sandbox_infra(st: dict, acts: list[str]) -> None:
 
 
 def _check_orphans(st: dict, acts: list[str]) -> None:
-    """Running sandboxes nobody owns: any sandbox while the worker is idle, or one older than the longest job."""
-    from .sandbox import PROXY_NAME
-    rc, out = _sh("docker", "ps", "--filter", "label=paperci=1", "--format", "{{.ID}} {{.Names}} {{.CreatedAt}}")
+    """Running sandboxes nobody owns: one whose starting process has exited (a job killed by a restart leaves its
+    sandbox behind while the next job runs), any sandbox while the worker is idle, or one older than the longest
+    job."""
+    from .sandbox import PROXY_NAME, owner_alive
+    rc, out = _sh("docker", "ps", "--filter", "label=paperci=1", "--format",
+                  "{{.ID}}\t{{.Names}}\t{{.CreatedAt}}\t{{.Label \"paperci.owner\"}}")
     if rc != 0:
         return
     idle = not busy()
     victims = []
     for line in out.splitlines():
-        parts = line.split(" ", 2)
+        parts = line.split("\t")
         if len(parts) < 3 or parts[1] == PROXY_NAME:
             continue
         try:
@@ -466,7 +469,8 @@ def _check_orphans(st: dict, acts: list[str]) -> None:
         except ValueError:
             continue
         age = time.time() - created
-        if (idle and age > 300) or age > max(LIMITS.values()) + GRACE:
+        dead_owner = owner_alive(parts[3] if len(parts) > 3 else "") is False
+        if ((dead_owner or idle) and age > 300) or age > max(LIMITS.values()) + GRACE:
             victims.append(parts[0])
     if victims:
         _sh("docker", "rm", "-f", *victims, timeout=120)
@@ -503,7 +507,13 @@ def _rollback() -> str | None:
     rc, head = _sh("sudo", "-u", "ubuntu", "git", "-C", str(ROOT), "rev-parse", "HEAD")
     if not good or head.strip() == good:
         return None
+    # The playbook is learned state the evolution loop rewrites; a reset must not put it back to the committed seed.
+    learned = {p: p.read_bytes() for p in [ROOT / "data" / "playbook.json", *(ROOT / "data" / "playbook_history").glob("*.json")]
+               if p.exists()}
     rc, _ = _sh("sudo", "-u", "ubuntu", "git", "-C", str(ROOT), "reset", "-q", "--hard", good)
+    for p, b in learned.items():
+        p.write_bytes(b)
+        _owned(p)
     return good if rc == 0 else None
 
 

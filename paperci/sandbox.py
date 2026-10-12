@@ -33,6 +33,31 @@ class SandboxError(RuntimeError):
     pass
 
 
+def _proc_start(pid: int) -> str | None:
+    """Kernel start time of a process (clock ticks since boot), so a recycled pid is not mistaken for the owner."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return stat.rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def owner_label() -> str:
+    import os
+    return f"{os.getpid()}:{_proc_start(os.getpid()) or '?'}"
+
+
+def owner_alive(label: str) -> bool | None:
+    """None when it cannot be told (no label, no /proc); else whether the process that started the sandbox runs."""
+    try:
+        pid, start = label.split(":", 1)
+    except ValueError:
+        return None
+    if start == "?" or not Path("/proc").is_dir():
+        return None
+    return _proc_start(int(pid)) == start
+
+
 def _docker(*args: str, timeout: float = 120, input_bytes: bytes | None = None,
             check: bool = True) -> subprocess.CompletedProcess:
     p = subprocess.run(["docker", *args], capture_output=True, timeout=timeout, input=input_bytes)
@@ -139,7 +164,7 @@ class Sandbox:
     def start(cls, tag: str, network: str = "proxy", image: str = SANDBOX_IMAGE,
               log_dir: Path | None = None) -> "Sandbox":
         name = f"paperci-{re.sub(r'[^a-z0-9]+', '-', tag.lower())[:40]}-{uuid.uuid4().hex[:6]}"
-        args = ["run", "-d", "--name", name, "--label", "paperci=1",
+        args = ["run", "-d", "--name", name, "--label", "paperci=1", "--label", f"paperci.owner={owner_label()}",
                 "--user", "1000:1000", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                 "--cpus", SANDBOX_CPUS, "--memory", SANDBOX_MEM, "--memory-swap", SANDBOX_MEM,
                 "--pids-limit", SANDBOX_PIDS, "-w", "/work"]

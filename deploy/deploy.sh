@@ -14,9 +14,14 @@ PY=.venv/bin/python
 GOOD=$(git rev-parse HEAD)
 ev() { $PY -m paperci.ops event deploy "$1" "passed=$2" >/dev/null 2>&1 || true; }
 healthy() { for _ in $(seq 1 30); do curl -sf -m 5 http://127.0.0.1:8000/healthz >/dev/null && return 0; sleep 3; done; return 1; }
+# The playbook is tracked as a seed, but on the server it is learned state the evolution loop rewrites; a plain
+# `git reset --hard` silently put every adopted generation back to the committed one.
+LEARNED=$(mktemp -d)
+cp -a data/playbook.json data/playbook_history "$LEARNED"/ 2>/dev/null || true
+reset_keep() { git reset -q --hard "$1" && cp -a "$LEARNED"/. data/; }
 rollback() {
   echo "!! $1 -> rolling back to ${GOOD:0:8}"
-  git reset -q --hard "$GOOD"
+  reset_keep "$GOOD"
   sudo cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/ && sudo systemctl daemon-reload
   sudo systemctl restart paperci-web
   if healthy; then ev "Deploy of ${NEW:0:8} rejected ($1); rolled back to ${GOOD:0:8}, service healthy" true
@@ -26,7 +31,7 @@ rollback() {
 git fetch -q origin || { echo "fetch failed"; exit 1; }
 NEW=$(git rev-parse "$REF") || exit 1
 [ "$NEW" = "$GOOD" ] && [ -z "${PAPERCI_DEPLOY_INJECT_FAULT:-}" ] && { echo "already at ${NEW:0:8}"; echo "$GOOD" > registry/ops/last_good_commit; exit 0; }
-git reset -q --hard "$NEW"
+reset_keep "$NEW"
 if [ -n "${PAPERCI_DEPLOY_INJECT_FAULT:-}" ]; then  # healer drill: simulate a broken commit
   echo "def broken(:" >> paperci/board.py
 fi
