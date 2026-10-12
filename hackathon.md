@@ -192,7 +192,9 @@
   live "since the fix" counts, a mirrored trace and `judges.json`. Demo script: `docs/demo-script.md`.
 - Opened to everyone (operator's call): invite codes removed. Still bounded: 3 submissions per network per hour,
   $0.60 per paper, and spend ceilings resized for the Factory key (the old $16 hard stop was sized for the $20
-  LiteLLM key and was about to stop the agent): hard stop $60, web cap $55.
+  LiteLLM key and was about to stop the agent): hard stop $60, web cap $55. Raised again once the operator
+  confirmed the Factory plan has no practical limit: hard stop $300, web cap $280, autopilot pacing $40/day
+  (kept as runaway guards, not budgets). The bottleneck is now the 2-vCPU box, one sandbox job at a time.
 
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
