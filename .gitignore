@@ -43,4 +43,20 @@ data/neatlogs_prompts.json
 data/evolve/
 data/icml/
 data/builder_policy.py
+data/neatlogs_incidents.json
+data/night_watch.md
 !.env.example
+
+# Local agent tooling and notes (not part of the submission)
+AGENTS.md
+.factory/*
+!.factory/settings.json
+.netlify/
+PROGRESS.md
+docs/posts.md
+scripts/smoke_llm.py
+scripts/run_bg.ps1
+scripts/show_queue.py
+scripts/inspect_db.py
+scripts/reset_triage.py
+scripts/nl_label_demo.py

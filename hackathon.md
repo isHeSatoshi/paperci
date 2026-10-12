@@ -1,7 +1,8 @@
 # neatHack build log: PaperCI
 
 ## Project
-- **Name:** PaperCI (working name)
+- **Name:** PaperCI
+- **Live:** https://paperci.vercel.app · evidence for judges: https://paperci.vercel.app/judges
 - **One sentence:** A CodeRabbit-style bot for arXiv. It watches fresh papers that ship code, tries to run
   that code in a locked-down sandbox, checks the headline numbers with an independent verifier, and
   turns each success into a verified, executable task for evaluating or training agents.
@@ -10,12 +11,14 @@
   cheap, auditable signal, and turns fresh papers into fresh, contamination-resistant tasks.
 
 ## Team
-- (fill in the names/handles you want public)
+- Aditya K ([@isHeSatoshi](https://x.com/isHeSatoshi) on X, [isHeSatoshi](https://github.com/isHeSatoshi) on GitHub), solo.
 
 ## Stack (actually used)
 - Python 3.12, own tool-calling loop (no agent framework), Pydantic typed outputs, SQLite state.
-- LLMs via an OpenAI-compatible LiteLLM proxy: Claude Sonnet 4.6 (builder + improver), Claude Haiku 4.5
-  (cheap solver), Amazon Nova Pro (claims + verifier, a different family than the builder), Nova Micro (triage).
+- LLMs, now: DeepSeek V4.1 Flash (builder, solver, improver) and GLM-5.3-Flash (verifier, claims, triage,
+  concierge; a different family than the builder) through the Factory API (`droid exec`, tools locked down).
+  Until 11 Oct: an OpenAI-compatible LiteLLM proxy with Claude Sonnet 4.6 (builder + improver), Claude Haiku 4.5
+  (cheap solver), Amazon Nova Pro (claims + verifier), Nova Micro (triage).
 - **neatlogs** Python SDK 1.4.26: `neatlogs.wrap(OpenAI(...))` for every LLM call; one WORKFLOW trace per
   paper; CHAIN/AGENT/TOOL/GUARDRAIL spans per stage; cost and failure class stamped on spans. Prompt
   management: every distinct builder system prompt (playbook generation x controller) is a versioned
@@ -26,7 +29,7 @@
 - **Entire** CLI 0.11.4 enabled for Factory Droid; build sessions attached as checkpoints on commits.
   `commit_linking: always` (the default `prompt` silently skipped linking for non-interactive commits),
   PII email redaction on, and a local-only rule redacting invite codes before transcripts reach the public repo.
-- **cfo.ai** for the business plan (human step, see HUMAN_TASKS.md; inputs in docs/unit-economics.md).
+- **cfo.ai** for the business plan (inputs in docs/unit-economics.md; plan link on /judges).
 - Docker Desktop: hardened sandbox image + tinyproxy egress allowlist on an `--internal` network.
 - Sources: arXiv API + arXiv HTML, Hugging Face Daily Papers API (+ HF paper markdown), GitHub REST API.
 
@@ -208,18 +211,25 @@
   - First 5 only (before the audit): built 2/5 -> 3/5, faithful 1 -> 1, validated 0 -> 1.
   - Best before/after trace pair (same paper): v1 `294209f0b2d1b60bfc1509fdbece2f1b` (19 LLM calls, 274k tokens) vs v2 `4e85d604ac7a5d343950ee923f573502` (13 LLM calls, 142k tokens).
 - Registry: 4 oracle-validated tasks (2 held-out, 2 dev; all reduced-scale), all "too hard for cheap solver" (0/2 Haiku). 4 packages rejected (3 integrity, 1 oracle).
-- Total LLM spend: $7.77 of the $20 key (ledger = proxy-reported).
+- Total LLM spend: $7.77 on the $20 LiteLLM key through 11 Oct (ledger = proxy-reported); about $17 all time by
+  12 Oct 16:15 IST including the Factory-backed evolution and ICML runs (USD estimates from token counts).
+- ICML 2026 blind eval (18 papers, Hugging Face community verdicts as the answer key, never shown to the agent):
+  pass 2 built 11, reduced-scale 9, 8 of 22 measured claims matched, 0 full-scale verdicts. Details: /icml.
 
 ## Entire checkpoints (session reasoning attached to commits)
 - **01M4KP3DNR0TF8TWQE611MJJYV** on `e70be0f` (verifier, packager, oracle, self-improvement loop):
   https://entire.io/gh/isHeSatoshi/paperci/commit/e70be0fdb9cc189abc7343dfe7f934f97d53f226
 - **01M4MKYQ3938RM8FJ5K9ETQ55A** on `e3b748d` (self-audit, judge hardening, re-verification, chaos recovery):
   https://entire.io/gh/isHeSatoshi/paperci/commit/e3b748dd2178ffbdeb24eca5e159c7fb0b2b5ae1
+- Since 12 Oct every commit carries an Entire checkpoint (one Droid session); /judges lists the checkpoint for each
+  neatlogs-found fix. Recent: **01M4QVCYNAD0ST9WYSM1QMPG3V** on `42beb3a` (builder no longer mistakes the LLM
+  host for its sandbox), **01M4QM8Y2HTBZ86D4MDSGB4GW7** on `9428ddb` (Google Drive download hosts allowlisted).
 - Transcripts were secret-scanned before attaching (0 hits for all keys and the GitHub token).
 
 ## Demo
-- Local: `python -m paperci dashboard` -> registry/index.html (private), `--public` -> docs/dashboard_public.html.
-- Script: docs/demo-script.md.
+- Live app: https://paperci.vercel.app (paste an arXiv link; e.g. 2507.12843 finishes in a few minutes).
+- Video: linked on /judges and in the submission post. Script: docs/demo-script.md.
+- Building in public: https://x.com/isHeSatoshi/status/2109565183140274613 (#neatHack).
 
 ## Known limitations and next steps
 - CPU-only, minutes-scale; most fresh ML papers are GPU/LLM-scale and are rejected or blocked (honest funnel).
@@ -230,4 +240,4 @@
 ## Submission (confirmed requirements, from neatlogs.com/hackathon)
 - Use neatlogs, Entire and cfo.ai; submit on X by quoting the official neatlogs post (team, name, project, public repo, demo), Mon 12 Oct 7:00-11:55 PM IST.
 - Evidence: before/after traces with numbers; failure + recovery run; Entire checkpoint link + ID; cfo.ai plan; public repo with hackathon-dated commits; #neatHack posts.
-- Outstanding (human): see HUMAN_TASKS.md.
+- Where each one is: https://paperci.vercel.app/judges (re-checked live). Outstanding (human): see HUMAN_TASKS.md.
