@@ -13,8 +13,8 @@ nova-pro, nova-micro; no opus), valid through Fri 2026-10-16. That covers about 
 demo-day reserve. Then tell the agent "credits added" and it will raise `PAPERCI_GLOBAL_BUDGET`,
 `PAPERCI_HARD_STOP` and `PAPERCI_DAILY_CAP` on the server.
 
-## B. Invite codes for the public app — share as you like
-Submissions on https://44-215-70-124.sslip.io need an invite code (each run spends LLM budget and runs public
+## B. Invite codes — DONE, removed on 2026-10-12: the app is open to everyone
+(Historical) Submissions on https://44-215-70-124.sslip.io needed an invite code (each run spends LLM budget and runs public
 code). The codes are in `%TEMP%\paperci-deploy\codes.txt` on this machine and in the server's `.env`.
 They are not in git. Give one to judges and keep one for yourself. The live board needs no code.
 

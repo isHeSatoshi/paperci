@@ -190,6 +190,9 @@
 - `/judges`: PaperCI run on its own submission; each official evidence row is a claim re-checked live (git,
   neatlogs API, run DB), with a verify command and what it does not show, plus the neatlogs triage table with
   live "since the fix" counts, a mirrored trace and `judges.json`. Demo script: `docs/demo-script.md`.
+- Opened to everyone (operator's call): invite codes removed. Still bounded: 3 submissions per network per hour,
+  $0.60 per paper, and spend ceilings resized for the Factory key (the old $16 hard stop was sized for the $20
+  LiteLLM key and was about to stop the agent): hard stop $60, web cap $55.
 
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.

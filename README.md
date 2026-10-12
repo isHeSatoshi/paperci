@@ -6,7 +6,7 @@ number.**
 _Built for neatHack 2026. Independent project; not affiliated with CodeRabbit, Hugging Face, arXiv or any
 paper's authors._
 
-**Try it: [paperci.vercel.app](https://paperci.vercel.app)** (paste an arXiv link; invite code needed for now) ·
+**Try it: [paperci.vercel.app](https://paperci.vercel.app)** (open to everyone: paste an arXiv link) ·
 [Live board](https://paperci.vercel.app/board) · [ICML 2026 results, by paper](https://paperci.vercel.app/icml) ·
 [Technical write-up](TECHNICAL_WRITEUP.md)
 

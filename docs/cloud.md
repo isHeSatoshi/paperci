@@ -5,7 +5,7 @@ account. Nobody needs to start it. It watches arXiv, reproduces new papers, writ
 failures every night, breaks itself on purpose to prove it can recover, and repairs whatever goes wrong.
 
 - Live board (public, anonymized): `https://paperci.vercel.app/board`
-- Author app (invite code required): `https://paperci.vercel.app/`
+- Author app (open to everyone): `https://paperci.vercel.app/`
 - Vercel is the front door only (`deploy/vercel`): every request is rewritten at the edge to the EC2 agent at
   `https://44-215-70-124.sslip.io`, which still does all the work (Docker sandboxes and long jobs can't run on Vercel).
 
@@ -51,7 +51,7 @@ or the SCP changing), and a human not reading the uptime email. CloudWatch alarm
 - LLM: `PAPERCI_DAILY_CAP` (USD per IST day, counted from deploy time) on top of the existing per-paper,
   per-stage and global hard stops. When the cap is reached the autopilot pauses until midnight and says so on the board.
   Author submissions are not paced by the daily cap (they count toward it, so the autopilot yields to them); they
-  are bounded by invite codes, 3 submissions per IP per hour, `PAPERCI_WEB_SPEND_CAP` and the global hard stop.
+  are bounded by 3 submissions per IP per hour, `PAPERCI_WEB_SPEND_CAP` and the global hard stop.
 - AWS: one t3.large (CPU credits in `standard` mode, so no burst charges), 50 GB gp3, no Elastic IP (account limit
   reached; the auto-assigned public IP is stable while the instance runs). About $10.5 for the 5-day window,
   plus about $1.5 for storage and the public IPv4 address.
