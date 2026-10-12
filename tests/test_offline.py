@@ -411,8 +411,12 @@ def test_neatlogs_incident_snapshots():
     db.q = lambda sql, args=(): rows
     try:
         snaps = {s["category"]: s for s in nl_api.snapshots()}
+        # Occurrences from before a deployed fix for that exact pattern are resolved, not open.
+        fixed = {s["category"] for s in nl_api.snapshots(fixes=[{"category": "egress_denied", "like": "d",
+                                                                 "live": _t.time() + 10}])}
     finally:
         db.q = orig
+    assert fixed == {"turn_budget_exhausted"}
     tb = snaps["turn_budget_exhausted"]
     assert tb["n"] == 4 and tb["papers"] == ["p0", "p1", "p2"] and len(tb["occurrences"]) == 4
     assert {o["trace_id"] for o in tb["occurrences"]} == {"t0", "t1", "t2", "t3"}

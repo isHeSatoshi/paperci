@@ -90,14 +90,35 @@ def _playbook_rules(category: str) -> list[dict]:
         return []
 
 
-def snapshots(now: float | None = None) -> list[dict]:
-    """One incident snapshot per failure category with unrecovered failures in the window."""
+def fixes() -> list[dict]:
+    """Deployed fixes for specific failure patterns, from docs/neatlogs-loop.json joined with git and the deploy
+    log (paperci/judges.py)."""
+    try:
+        from . import judges
+        out = []
+        for r in judges.loop_rows({"git": judges._git(), "neatlogs": {}}):
+            m = r.get("measure") or {}
+            if r.get("outcome") == "fixed" and m.get("kind") == "failures" and r.get("fix") and r.get("live_since"):
+                out.append({"category": m["category"], "like": (m.get("like") or "%").strip("%"), "live": r["live_since"],
+                            "sha": r["fix"]["sha"], "diagnosis": r["diagnosis"]})
+        return out
+    except Exception:
+        return []
+
+
+def snapshots(now: float | None = None, fixes: list[dict] | None = None) -> list[dict]:
+    """One incident snapshot per failure category with unrecovered failures in the window. Failures that a
+    deployed fix addressed (same category and pattern, before the fix went live) no longer count as open."""
     from . import db
     now = now or time.time()
     rows = db.q("SELECT id, ts, arxiv_id, run_label, stage, category, detail, trace_id FROM failures "
                 "WHERE ts > ? AND recovered = 0 AND trace_id IS NOT NULL AND trace_id != '' ORDER BY ts", (now - WINDOW_S,))
     by: dict[str, list] = {}
     for r in rows:
+        fx = next((x for x in fixes or [] if x["category"] == r["category"] and x["like"] in r["detail"]
+                   and r["ts"] < x["live"]), None)
+        if fx:  # happened before a deployed fix for exactly this failure: resolved by that fix, not open
+            continue
         by.setdefault(r["category"], []).append(dict(r))
     out = []
     for cat, fs in by.items():
@@ -129,7 +150,9 @@ def publish_incidents(force: bool = False, dry_run: bool = False) -> dict:
     now = time.time()
     if not force and not dry_run and now - st.get("last", 0) < MIN_GAP_S:
         return {"skipped": "published recently"}
-    snaps = snapshots(now)
+    fx = fixes()
+    by_fix = {f["category"]: f for f in fx}
+    snaps = snapshots(now, fx)
     if not dry_run:
         wanted = {o["trace_id"] for s in snaps for o in s["occurrences"]}
         starts = _trace_starts(wanted, {k: v for k, v in st.get("trace_start", {}).items() if k in wanted})
@@ -150,10 +173,15 @@ def publish_incidents(force: bool = False, dry_run: bool = False) -> dict:
             "source": "incident_loop", "fingerprint": f"paperci:builder:{cat}"[:255], "revision": rev,
             "complete_snapshot": True, "window_start": _iso(now - WINDOW_S), "window_end": _iso(now),
             "workflow": WORKFLOW, "category": cat[:32],
-            "title": (f"Builder failure: {cat} (no unrecovered occurrences in the last 24 h)" if quiet_one
+            "title": ((f"Builder failure: {cat} - fixed in {by_fix[cat]['sha'][:7]}, none since" if cat in by_fix else
+                       f"Builder failure: {cat} (no unrecovered occurrences in the last 24 h)") if quiet_one
                       else s["title"])[:240],
-            "description": ("No unrecovered occurrences of this failure category in the last 24 h." if quiet_one
-                            else s["description"]),
+            "description": ((f"Occurrences matching '{by_fix[cat]['like']}' were resolved by commit {by_fix[cat]['sha'][:7]} "
+                             f"(https://github.com/isHeSatoshi/paperci/commit/{by_fix[cat]['sha']}), live since "
+                             f"{_iso(by_fix[cat]['live'])}. {by_fix[cat]['diagnosis']} No unrecovered occurrences of this "
+                             "category remain in the last 24 h."
+                             if cat in by_fix else "No unrecovered occurrences of this failure category in the last 24 h.")
+                            if quiet_one else s["description"]),
             "severity": "low" if quiet_one else s["severity"],
             "failure_occurrences": [] if quiet_one else s["occurrences"],
             # Both of these may cite only this snapshot's own occurrences; the API rejects free-text samples and
