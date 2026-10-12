@@ -331,13 +331,20 @@ def test_background_queues_alternate():
     ops.enabled, ops._load = (lambda: True), (lambda p: st)
     evolve.due_new_round, evolve.has_pending = (lambda: False), (lambda: True)
     icml_eval.golden_pending, icml_eval.has_pending = (lambda: False), (lambda: True)
+    import os
+    prio = os.environ.pop("PAPERCI_ICML_PRIORITY", None)
     try:
         assert ops.due() == "evolve"
         st["last_bg"] = "evolve"
         assert ops.due() == "icml"
         st["last_bg"] = "icml"
         assert ops.due() == "evolve"
+        os.environ["PAPERCI_ICML_PRIORITY"] = "1"
+        assert ops.due() == "icml"
     finally:
+        os.environ.pop("PAPERCI_ICML_PRIORITY", None)
+        if prio is not None:
+            os.environ["PAPERCI_ICML_PRIORITY"] = prio
         (ops.enabled, ops._load, evolve.due_new_round, evolve.has_pending, icml_eval.golden_pending,
          icml_eval.has_pending, ops.NIGHTLY_HOUR) = saved
 
