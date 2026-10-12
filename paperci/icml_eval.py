@@ -29,7 +29,12 @@ from .config import DATA_DIR, ROOT
 
 ICML = DATA_DIR / "icml"
 CANDS = ICML / "candidates.json"
-STATE = ICML / "state.json"
+# A later pass reruns the same blind eval papers with the agent as it is now, so pass N vs pass 1 shows whether
+# the self-improvement transferred to papers it never learned from. Each pass has its own state and run labels.
+PASS = int(os.getenv("PAPERCI_ICML_PASS", "1"))
+STATE_P1 = ICML / "state.json"
+STATE = STATE_P1 if PASS == 1 else ICML / f"state_p{PASS}.json"
+LABEL_PREFIX = "icml-" if PASS == 1 else f"icml-p{PASS}-"
 BENCH_FILE = ICML / "bench.json"
 HF = "https://huggingface.co/datasets/ICML-2026-agent-repro"
 SPLIT = "icml"
@@ -229,14 +234,14 @@ def step() -> dict:
         item["status"] = "failed"
         _save(STATE, st)
         return {"status": "failed twice", "arxiv": item["arxiv"]}
-    label = f"icml-{item['arxiv']}" + (f"-r{item['attempts'] - 1}" if item["attempts"] > 1 else "")
+    label = f"{LABEL_PREFIX}{item['arxiv']}" + (f"-r{item['attempts'] - 1}" if item["attempts"] > 1 else "")
     item.update(label=label, started=time.time())
     _save(STATE, st)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PAPERCI_SKIP_PACKAGE": "1", "PAPERCI_BUDGETED_JOB": "1",
            "PAPERCI_END_USER": "icml-eval", "PAPERCI_SESSION": "run:icml-eval"}
     p = subprocess.run([sys.executable, "-u", "-m", "paperci.icml_eval", "run", item["arxiv"], label], cwd=ROOT,
                        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=RUN_TIMEOUT)
-    (ops.OPS / f"icml-{item['arxiv']}.log").write_text(p.stdout + p.stderr, encoding="utf-8")
+    (ops.OPS / f"{label}.log").write_text(p.stdout + p.stderr, encoding="utf-8")
     st = _load(STATE, st)
     for r in st["runs"]:
         if r["arxiv"] == item["arxiv"]:
@@ -299,10 +304,10 @@ def ours(arxiv: str, label: str) -> dict | None:
 
 
 # ---------------------------------------------------------------- 4. score against the HF consensus
-def items() -> list[dict]:
+def items(state: Path | None = None) -> list[dict]:
     cands = {c["arxiv"]: c for c in _load(CANDS, [])}
     out = []
-    for r in _load(STATE, {"runs": []})["runs"]:
+    for r in _load(state or STATE, {"runs": []})["runs"]:
         c = cands.get(r["arxiv"])
         if not c or not r.get("result"):
             continue
@@ -312,8 +317,8 @@ def items() -> list[dict]:
     return out
 
 
-def score() -> dict:
-    xs = items()
+def score(state: Path | None = None) -> dict:
+    xs = items(state)
     dec = [x for x in xs if x["decided"]]
     conf = collections.Counter(f"HF {x['label']} / PaperCI {x['ours'] or 'no decision'}" for x in xs)
     by = {lab: [x for x in xs if x["label"] == lab] for lab in ("verified", "falsified")}
@@ -330,7 +335,8 @@ def score() -> dict:
                  for c in x["run"]["result"].get("claims") or [] if c.get("within")),
              sum(1 for x in xs if x["run"]["result"].get("verdict") == "toy-scale"
                  for c in x["run"]["result"].get("claims") or [] if c.get("measured") is not None))}
-    _save(ICML / "score.json", s)
+    if state is None:
+        _save(ICML / ("score.json" if PASS == 1 else f"score_p{PASS}.json"), s)
     return s
 
 
@@ -338,7 +344,8 @@ def status() -> dict:
     st = _load(STATE, {"runs": []})
     return {"candidates": dict(collections.Counter((c.get("screen") or {}).get("status", "unscreened") for c in _load(CANDS, []))),
             "bench": _load(BENCH_FILE, []),
-            "runs": dict(collections.Counter(r["status"] for r in st["runs"])), "score": score()}
+            "runs": dict(collections.Counter(r["status"] for r in st["runs"])), "score": score(), "pass": PASS,
+            "first_pass": score(STATE_P1) if PASS != 1 else None}
 
 
 # ---------------------------------------------------------------- 5. daily golden check

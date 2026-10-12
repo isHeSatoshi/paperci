@@ -688,6 +688,12 @@ build {e(str(r.get('build')))}, {e(str(r.get('turns')))} agent turns</div>
 <div class=kpi><b>{s['runs']}</b>papers run blind</div><div class=kpi><b>{s['built']}</b>built and run offline</div>
 <div class=kpi><b>{pct(s['coverage'])}</b>reached a full-scale verdict</div><div class=kpi><b>{pct(s['agreement'])}</b>agreement when it did</div>
 <div class=kpi><b>{s['toy_scale']} &middot; {e(s['reduced_claims_matched'])}</b>reduced-scale runs &middot; claims matched</div></div>"""
+    if icml_eval.PASS != 1:
+        p1 = icml_eval.score(icml_eval.STATE_P1)
+        head += (f"<p class=muted>Pass {icml_eval.PASS} reruns the same blind papers with the agent after its overnight "
+                 f"self-improvement (it never learned from these papers). Pass 1 for comparison: {p1['runs']} run, "
+                 f"{p1['built']} built and run offline, {p1['toy_scale']} reduced-scale runs, "
+                 f"{e(p1['reduced_claims_matched'])} reduced-scale claims matched, full-scale verdicts {p1['decided']}.</p>")
     return _page("PaperCI on ICML 2026 papers", f"""<div class=wrap style='padding:20px 0 60px'>
 <h1>PaperCI on ICML 2026 papers</h1>
 <p>The answer key is <a href="https://huggingface.co/datasets/ICML-2026-agent-repro/verdicts" target=_blank rel=noopener>Hugging
@@ -710,8 +716,10 @@ def icml_review_redirect():
 @app.get("/icml/r/{arxiv}")
 def icml_review_file(arxiv: str):
     from . import icml_eval
-    run = next((r for r in icml_eval._load(icml_eval.STATE, {"runs": []})["runs"] if r["arxiv"] == arxiv), None)
-    p = Path(run["review"]) if run and run.get("review") else None
+    runs = [r for st in (icml_eval.STATE, icml_eval.STATE_P1) for r in icml_eval._load(st, {"runs": []})["runs"]
+            if r["arxiv"] == arxiv and r.get("review")]
+    run = runs[0] if runs else None
+    p = Path(run["review"]) if run else None
     if not p or not p.exists() or REGISTRY_DIR.resolve() not in p.resolve().parents:
         raise HTTPException(404)
     banner = (f"<div style='background:#fef3c7;border-bottom:1px solid #f59e0b;padding:10px 16px;font:14px system-ui'>"

@@ -145,6 +145,8 @@ def due() -> str | None:
     evo, icml = evo_on and evolve.has_pending(), icml_eval.has_pending()
     # Both are long background queues; alternate so neither starves the other.
     if evo and icml:
+        if os.getenv("PAPERCI_ICML_PRIORITY") == "1":  # finish a measurement pass first (e.g. before a deadline)
+            return "icml"
         return "icml" if st.get("last_bg") == "evolve" else "evolve"
     if evo:
         return "evolve"
