@@ -1,0 +1,1091 @@
+{
+ "generated": 1791816322,
+ "frozen": [
+  "paperci/stages/verifier.py",
+  "paperci/stages/claims.py",
+  "paperci/stages/tasks.py",
+  "paperci/ledger.py",
+  "paperci/evolve.py",
+  "paperci/policy_sandbox.py",
+  "paperci/improver.py",
+  "paperci/pipeline.py",
+  "paperci/config.py",
+  "paperci/db.py",
+  "sandbox/proxy/allowlist"
+ ],
+ "commits": [
+  {
+   "sha": "199f95e79e8d788de6db2afee61636e71aa57a12",
+   "parent": "543a73b91929b3edc336ed9dfa844a7799513edb",
+   "ts": 1791808542,
+   "subject": "Submission cleanup: drop dev-only scripts and stale notes from the repo, hackathon.md current",
+   "checkpoint": "01M4R1S3S5Y25874TH0AZSER5W",
+   "level": "wide",
+   "why": "changes an interface many callers use; run the full offline suite first",
+   "referee_files": [],
+   "wide_changes": [
+    "scripts/nl_label_demo.py:run (removed, 198 dependents)"
+   ],
+   "files": 9,
+   "entities": 22,
+   "top": [
+    "removed function scripts/nl_label_demo.py:run",
+    "removed section docs/posts.md:Post-6-Entire-checkpoints-cfo.ai",
+    "body_changed document .gitignore:.gitignore",
+    "removed section PROGRESS.md:PROGRESS-resume-point-for-any-new-session",
+    "removed section PROGRESS.md:State-2026-10-11-10:15-IST",
+    "removed section PROGRESS.md:Cloud-2026-10-11-evening-IST-onward"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/199f95e79e8d788de6db2afee61636e71aa57a12",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/199f95e79e8d788de6db2afee61636e71aa57a12"
+  },
+  {
+   "sha": "543a73b91929b3edc336ed9dfa844a7799513edb",
+   "parent": "487bd2b15ff9e947427101061e85f7f17e9b2733",
+   "ts": 1791806244,
+   "subject": "Judges: link three neatlogs traces, labelled sign-in until sharing is public",
+   "checkpoint": "01M4QZJZWHNWR5HMF3C4JAN17A",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 2,
+   "entities": 6,
+   "top": [
+    "body_changed function paperci/judges.py:checks",
+    "body_changed function paperci/judges.py:render",
+    "body_changed section docs/judges-links.json:shared_traces",
+    "added section docs/judges-links.json:traces_public",
+    "body_changed function paperci/judges.py:tlink",
+    "added section docs/judges-links.json:a3018a6313414b1ad77c8db639be57f0"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/543a73b91929b3edc336ed9dfa844a7799513edb",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/543a73b91929b3edc336ed9dfa844a7799513edb"
+  },
+  {
+   "sha": "487bd2b15ff9e947427101061e85f7f17e9b2733",
+   "parent": "42beb3a1e5c9aad2a8290ee122f88e3c8cd22534",
+   "ts": 1791805614,
+   "subject": "Judges: link the build-in-public post; HUMAN_TASKS trimmed to what is left",
+   "checkpoint": "01M4QYZRS74HEN0PFHT06MAREJ",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 3,
+   "entities": 20,
+   "top": [
+    "body_changed function paperci/judges.py:checks",
+    "body_changed section docs/judges-links.json:posts",
+    "added section HUMAN_TASKS.md:Tonight-before-11:55-PM-IST",
+    "removed section HUMAN_TASKS.md:A.-More-LLM-credits-for-the-always-on-agent-TODO-you-said-you-can-get-more-5-min",
+    "removed section HUMAN_TASKS.md:B.-Invite-codes-DONE-removed-on-2026-10-12:-the-app-is-open-to-everyone",
+    "removed section HUMAN_TASKS.md:B2.-Approve-or-reject-evolved-control-policies-when-the-board-says-one-is-waiting-5-min"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/487bd2b15ff9e947427101061e85f7f17e9b2733",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/487bd2b15ff9e947427101061e85f7f17e9b2733"
+  },
+  {
+   "sha": "42beb3a1e5c9aad2a8290ee122f88e3c8cd22534",
+   "parent": "9428ddb5a7c618cb29fdfccce1f016dac49fd9af",
+   "ts": 1791801852,
+   "subject": "Factory backend: empty CLI cwd and host-context note so builders don't mistake the droid host for the sandbox",
+   "checkpoint": "01M4QVCYNAD0ST9WYSM1QMPG3V",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 2,
+   "entities": 3,
+   "top": [
+    "body_changed function paperci/llm.py:_factory_chat",
+    "added function tests/test_offline.py:fake_run",
+    "added function tests/test_offline.py:test_factory_cli_sees_an_empty_directory"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/42beb3a1e5c9aad2a8290ee122f88e3c8cd22534",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/42beb3a1e5c9aad2a8290ee122f88e3c8cd22534"
+  },
+  {
+   "sha": "9428ddb5a7c618cb29fdfccce1f016dac49fd9af",
+   "parent": "e07057f120781431f9b023c74e4fe01b87acb42f",
+   "ts": 1791794380,
+   "subject": "Allow Google Drive download redirect hosts (doc-*-docs.googleusercontent.com)",
+   "checkpoint": "01M4QM8Y2HTBZ86D4MDSGB4GW7",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "sandbox/proxy/allowlist"
+   ],
+   "wide_changes": [],
+   "files": 0,
+   "entities": 0,
+   "top": [],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/9428ddb5a7c618cb29fdfccce1f016dac49fd9af",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/9428ddb5a7c618cb29fdfccce1f016dac49fd9af"
+  },
+  {
+   "sha": "e07057f120781431f9b023c74e4fe01b87acb42f",
+   "parent": "6dba6b422d4c970c5f909f17b110eb7411fd5839",
+   "ts": 1791793691,
+   "subject": "Submission rate limit configurable, default 10 per network per hour",
+   "checkpoint": "01M4QKKWYHEY6AXV6AR2DDAXX0",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 3,
+   "entities": 3,
+   "top": [
+    "body_changed function paperci/web.py:submit",
+    "body_changed module docs/cloud.md:docs/cloud.md",
+    "body_changed module hackathon.md:hackathon.md"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/e07057f120781431f9b023c74e4fe01b87acb42f",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/e07057f120781431f9b023c74e4fe01b87acb42f"
+  },
+  {
+   "sha": "6dba6b422d4c970c5f909f17b110eb7411fd5839",
+   "parent": "8fc319b627a233e9a03e153883cd57300705237e",
+   "ts": 1791793239,
+   "subject": "Progress log: spend ceilings are runaway guards now (Factory plan has no practical limit)",
+   "checkpoint": "01M4QK645EVH0WWFR9T5AQ54WW",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 1,
+   "top": [
+    "body_changed module hackathon.md:hackathon.md"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/6dba6b422d4c970c5f909f17b110eb7411fd5839",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/6dba6b422d4c970c5f909f17b110eb7411fd5839"
+  },
+  {
+   "sha": "8fc319b627a233e9a03e153883cd57300705237e",
+   "parent": "9c53a8ff6b966a4a23cd0d3c55959912e32f2a0a",
+   "ts": 1791792859,
+   "subject": "Open to everyone: invite codes removed; spend ceilings resized for the Factory key",
+   "checkpoint": "01M4QJTGXYQGMPC9ND27T2KZZM",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 4,
+   "entities": 5,
+   "top": [
+    "added section HUMAN_TASKS.md:B.-Invite-codes-DONE-removed-on-2026-10-12:-the-app-is-open-to-everyone",
+    "removed section HUMAN_TASKS.md:B.-Invite-codes-for-the-public-app-share-as-you-like",
+    "body_changed module README.md:README.md",
+    "body_changed module docs/cloud.md:docs/cloud.md",
+    "body_changed module hackathon.md:hackathon.md"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/8fc319b627a233e9a03e153883cd57300705237e",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/8fc319b627a233e9a03e153883cd57300705237e"
+  },
+  {
+   "sha": "9c53a8ff6b966a4a23cd0d3c55959912e32f2a0a",
+   "parent": "156d2bd8fa06e6180c3aa6071928c6416d750661",
+   "ts": 1791790454,
+   "subject": "Tests: queue-order and deploy-pause tests ignore the real deploying flag that deploy.sh holds while it runs them",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 2,
+   "top": [
+    "body_changed function tests/test_offline.py:test_background_queues_alternate",
+    "body_changed function tests/test_offline.py:test_no_job_starts_during_a_deploy"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/9c53a8ff6b966a4a23cd0d3c55959912e32f2a0a",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/9c53a8ff6b966a4a23cd0d3c55959912e32f2a0a"
+  },
+  {
+   "sha": "156d2bd8fa06e6180c3aa6071928c6416d750661",
+   "parent": "6b2f051223da2d53dc2b4bb4fd355771c07699c6",
+   "ts": 1791790258,
+   "subject": "neatlogs incidents: cite a trace only once it is finalized (a running trace's provisional start time is rejected as evidence)",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 1,
+   "top": [
+    "body_changed function paperci/nl_api.py:_trace_starts"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/156d2bd8fa06e6180c3aa6071928c6416d750661",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/156d2bd8fa06e6180c3aa6071928c6416d750661"
+  },
+  {
+   "sha": "6b2f051223da2d53dc2b4bb4fd355771c07699c6",
+   "parent": "2d131985c81368c70519319b010879db6ee3fddf",
+   "ts": 1791790065,
+   "subject": "Worker starts no job during a deploy (neatlogs TypeError incident: a job mixed old and new modules); loop log: round 1108 policy also tripped by the heredoc false positive",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 4,
+   "entities": 4,
+   "top": [
+    "body_changed function paperci/ops.py:due",
+    "body_changed module deploy/deploy.sh:deploy/deploy.sh",
+    "body_changed module docs/neatlogs-loop.json:docs/neatlogs-loop.json",
+    "added function tests/test_offline.py:test_no_job_starts_during_a_deploy"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/6b2f051223da2d53dc2b4bb4fd355771c07699c6",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/6b2f051223da2d53dc2b4bb4fd355771c07699c6"
+  },
+  {
+   "sha": "2d131985c81368c70519319b010879db6ee3fddf",
+   "parent": "653705534ee85a1025d30946a60089ab6f1c291d",
+   "ts": 1791789713,
+   "subject": "/judges: fixed rows say 'not deployed yet' until the fix is live; clearer kickoff date; wider trace timing column",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 2,
+   "top": [
+    "body_changed function paperci/judges.py:checks",
+    "body_changed function paperci/judges.py:loop_rows"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/2d131985c81368c70519319b010879db6ee3fddf",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/2d131985c81368c70519319b010879db6ee3fddf"
+  },
+  {
+   "sha": "653705534ee85a1025d30946a60089ab6f1c291d",
+   "parent": "bb9e0a39ac5e594edd025da29dbfc487d4f4c2ee",
+   "ts": 1791789444,
+   "subject": "README and progress log: judges page, what neatlogs found, ICML pass 1 vs 2 (flat, and why); demo script",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 3,
+   "entities": 18,
+   "top": [
+    "body_changed module README.md:README.md",
+    "removed section docs/demo-script.md:Demo-script-3:30-and-shot-list:-CodeRabbit-for-research-papers",
+    "added section docs/demo-script.md:Demo-video:-script-and-shot-list-target-3:00",
+    "added section docs/demo-script.md:0:00-0:15-Hook-shot:-landing-page-https://paperci.vercel.app/",
+    "removed section docs/demo-script.md:0:00-0:20-Hook",
+    "added section docs/demo-script.md:0:15-0:55-The-agent-one-run-shots:-/job/...-of-the-demo-job-then-the-review-page"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/653705534ee85a1025d30946a60089ab6f1c291d",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/653705534ee85a1025d30946a60089ab6f1c291d"
+  },
+  {
+   "sha": "bb9e0a39ac5e594edd025da29dbfc487d4f4c2ee",
+   "parent": "337d3296982b0b975d367b03094c7c03b790fadc",
+   "ts": 1791789256,
+   "subject": "neatlogs incidents: occurrences a deployed fix addressed are resolved, and the closing snapshot names the fix commit",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "wide",
+   "why": "changes an interface many callers use; run the full offline suite first",
+   "referee_files": [],
+   "wide_changes": [
+    "paperci/nl_api.py:snapshots (signature_changed, 5 dependents)"
+   ],
+   "files": 2,
+   "entities": 4,
+   "top": [
+    "added function paperci/nl_api.py:fixes",
+    "signature_changed function paperci/nl_api.py:snapshots",
+    "body_changed function paperci/nl_api.py:publish_incidents",
+    "body_changed function tests/test_offline.py:test_neatlogs_incident_snapshots"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/bb9e0a39ac5e594edd025da29dbfc487d4f4c2ee",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/bb9e0a39ac5e594edd025da29dbfc487d4f4c2ee"
+  },
+  {
+   "sha": "337d3296982b0b975d367b03094c7c03b790fadc",
+   "parent": "79198e0a1e53b50214933f5a0c2eac14561a483c",
+   "ts": 1791789102,
+   "subject": "/judges: PaperCI run on its own submission (7 evidence checks re-checked live, neatlogs flag triage, mirrored trace, judges.json)",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 4,
+   "entities": 28,
+   "top": [
+    "added section docs/neatlogs-loop.json:id",
+    "added function paperci/judges.py:checks",
+    "added section docs/neatlogs-loop.json:traces",
+    "added function paperci/judges.py:_local",
+    "added section docs/neatlogs-loop.json:outcome",
+    "added function paperci/judges.py:links"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/337d3296982b0b975d367b03094c7c03b790fadc",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/337d3296982b0b975d367b03094c7c03b790fadc"
+  },
+  {
+   "sha": "79198e0a1e53b50214933f5a0c2eac14561a483c",
+   "parent": "fb46e2fb0d3b9118ea582fef02ac2f6af8f4fecd",
+   "ts": 1791789100,
+   "subject": "Builder: a harness error in one tool call costs a turn, not the build; verifier sees heredoc-written drivers; allow Google Drive data (all three found via neatlogs)",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/stages/verifier.py",
+    "sandbox/proxy/allowlist"
+   ],
+   "wide_changes": [],
+   "files": 3,
+   "entities": 7,
+   "top": [
+    "body_changed class paperci/stages/builder.py:Builder",
+    "body_changed function paperci/stages/verifier.py:integrity",
+    "body_changed function paperci/stages/builder.py:_pip_packages",
+    "body_changed method paperci/stages/builder.py:Builder._loop",
+    "body_changed method paperci/stages/builder.py:Builder._finalize",
+    "body_changed function paperci/stages/verifier.py:with_drivers"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/79198e0a1e53b50214933f5a0c2eac14561a483c",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/79198e0a1e53b50214933f5a0c2eac14561a483c"
+  },
+  {
+   "sha": "fb46e2fb0d3b9118ea582fef02ac2f6af8f4fecd",
+   "parent": "d7b81570fbd70d7505dab7a50c434174bd88152e",
+   "ts": 1791787386,
+   "subject": "Deploys and rollbacks keep the learned playbook; orphan sweep removes sandboxes whose owning job died",
+   "checkpoint": "01M4QDKG6YSX03S70NGDVMGM25",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 4,
+   "entities": 10,
+   "top": [
+    "body_changed class paperci/sandbox.py:Sandbox",
+    "body_changed method paperci/sandbox.py:Sandbox.start",
+    "added function paperci/sandbox.py:owner_label",
+    "body_changed function deploy/deploy.sh:rollback",
+    "added function paperci/sandbox.py:_proc_start",
+    "added function paperci/sandbox.py:owner_alive"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/fb46e2fb0d3b9118ea582fef02ac2f6af8f4fecd",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/fb46e2fb0d3b9118ea582fef02ac2f6af8f4fecd"
+  },
+  {
+   "sha": "63ee1bc9d936883204b80f994fbad520af4b4cfa",
+   "parent": "f8bceb9c94d3454fcf6441acc40131626c0abad6",
+   "ts": 1791772897,
+   "subject": "Test: background queue order independent of the server's ICML priority setting",
+   "checkpoint": "01M4PZKHWAV02FB5ZDYJEY82HG",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 1,
+   "top": [
+    "body_changed function tests/test_offline.py:test_background_queues_alternate"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/63ee1bc9d936883204b80f994fbad520af4b4cfa",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/63ee1bc9d936883204b80f994fbad520af4b4cfa"
+  },
+  {
+   "sha": "f8bceb9c94d3454fcf6441acc40131626c0abad6",
+   "parent": "fc606fda09ececd98b99918e2479960bbc842230",
+   "ts": 1791772708,
+   "subject": "ICML eval: second blind pass with the improved agent, compared with pass 1",
+   "checkpoint": "01M4PZKHWAV02FB5ZDYJEY82HG",
+   "level": "wide",
+   "why": "changes an interface many callers use; run the full offline suite first",
+   "referee_files": [],
+   "wide_changes": [
+    "paperci/icml_eval.py:items (signature_changed, 83 dependents)",
+    "paperci/icml_eval.py:score (signature_changed, 16 dependents)"
+   ],
+   "files": 3,
+   "entities": 7,
+   "top": [
+    "body_changed function paperci/icml_eval.py:status",
+    "signature_changed function paperci/icml_eval.py:items",
+    "signature_changed function paperci/icml_eval.py:score",
+    "body_changed function paperci/icml_eval.py:step",
+    "body_changed function paperci/ops.py:due",
+    "body_changed function paperci/web.py:icml_page"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/f8bceb9c94d3454fcf6441acc40131626c0abad6",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/f8bceb9c94d3454fcf6441acc40131626c0abad6"
+  },
+  {
+   "sha": "cf8e6f298482db62c05d5233317eaa8abcdd0d87",
+   "parent": "34f496099fbb227d69b34f11b93c929606efaba8",
+   "ts": 1791749817,
+   "subject": "deploy.sh: parse the whole script before running so a self-update cannot mix versions",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 1,
+   "top": [
+    "body_changed module deploy/deploy.sh:deploy/deploy.sh"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/cf8e6f298482db62c05d5233317eaa8abcdd0d87",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/cf8e6f298482db62c05d5233317eaa8abcdd0d87"
+  },
+  {
+   "sha": "34f496099fbb227d69b34f11b93c929606efaba8",
+   "parent": "06404ecf0bfe655bb4f8d8bf79ba8f8fa8939785",
+   "ts": 1791749643,
+   "subject": "Allow Hugging Face CDN and bare openml.org; rebuild proxy on allowlist change; reduced-scale runs are not ICML verdicts",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "sandbox/proxy/allowlist"
+   ],
+   "wide_changes": [],
+   "files": 3,
+   "entities": 3,
+   "top": [
+    "body_changed function paperci/icml_eval.py:score",
+    "body_changed function paperci/web.py:icml_page",
+    "body_changed module deploy/deploy.sh:deploy/deploy.sh"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/34f496099fbb227d69b34f11b93c929606efaba8",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/34f496099fbb227d69b34f11b93c929606efaba8"
+  },
+  {
+   "sha": "06404ecf0bfe655bb4f8d8bf79ba8f8fa8939785",
+   "parent": "ae5ac8d2fa0c5028c224425aec9c6733cdbab893",
+   "ts": 1791749153,
+   "subject": "Meme: the agent verifies each claim by rebuilding the repo in a sandbox",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 1,
+   "top": [
+    "body_changed module README.md:README.md"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/06404ecf0bfe655bb4f8d8bf79ba8f8fa8939785",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/06404ecf0bfe655bb4f8d8bf79ba8f8fa8939785"
+  },
+  {
+   "sha": "ae5ac8d2fa0c5028c224425aec9c6733cdbab893",
+   "parent": "c24c918236b27590726ce5aca7eacf7bda1f3b88",
+   "ts": 1791748918,
+   "subject": "README: claim-verification framing, try-it link, review prices, vision, pass/fail agent screenshots",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 19,
+   "top": [
+    "removed section README.md:PaperCI",
+    "removed section README.md:Safety",
+    "added section README.md:PaperCI:-CodeRabbit-for-research-papers",
+    "removed section README.md:Latest-changes",
+    "added section README.md:What-the-author-sees",
+    "removed section README.md:Quick-start"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/ae5ac8d2fa0c5028c224425aec9c6733cdbab893",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/ae5ac8d2fa0c5028c224425aec9c6733cdbab893"
+  },
+  {
+   "sha": "c24c918236b27590726ce5aca7eacf7bda1f3b88",
+   "parent": "dd3f1c8d88c96936987a07df176ccbc4f8ad30b5",
+   "ts": 1791747981,
+   "subject": "Verifier: builder-written drivers that import the repo count as the repo's code path",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/stages/verifier.py"
+   ],
+   "wide_changes": [],
+   "files": 4,
+   "entities": 6,
+   "top": [
+    "body_changed function paperci/stages/verifier.py:integrity",
+    "body_changed function paperci/icml_eval.py:main",
+    "added function paperci/icml_eval.py:refresh",
+    "added function paperci/stages/verifier.py:with_drivers",
+    "body_changed module scripts/reverify.py:scripts/reverify.py",
+    "body_changed function tests/test_offline.py:test_integrity"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/c24c918236b27590726ce5aca7eacf7bda1f3b88",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/c24c918236b27590726ce5aca7eacf7bda1f3b88"
+  },
+  {
+   "sha": "dd3f1c8d88c96936987a07df176ccbc4f8ad30b5",
+   "parent": "b8b714efbb255ba9d5397a4184930bd6bf5b1fa7",
+   "ts": 1791747621,
+   "subject": "Plain-language README with memes, technical write-up, .env.example",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 5,
+   "entities": 42,
+   "top": [
+    "added section README.md:PaperCI",
+    "removed section README.md:Results-so-far-measured-docs/evidence.md",
+    "body_changed function paperci/board.py:render",
+    "added section README.md:Results",
+    "body_changed document .gitignore:.gitignore",
+    "removed section README.md:PaperCI:-CodeRabbit-for-research-papers"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/dd3f1c8d88c96936987a07df176ccbc4f8ad30b5",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/dd3f1c8d88c96936987a07df176ccbc4f8ad30b5"
+  },
+  {
+   "sha": "b8b714efbb255ba9d5397a4184930bd6bf5b1fa7",
+   "parent": "f23f9910b51c9d82b76a58917386d981c8301aab",
+   "ts": 1791747079,
+   "subject": "Logbook learning from community reproductions, fast evolution rounds, fair background queue",
+   "checkpoint": "01M4P75DN1G6X7VNSWK55A3D0R",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/evolve.py"
+   ],
+   "wide_changes": [],
+   "files": 6,
+   "entities": 21,
+   "top": [
+    "body_changed function paperci/evolve.py:start",
+    "added function paperci/logbook_learn.py:main",
+    "added function paperci/logbook_learn.py:propose",
+    "body_changed function paperci/evolve.py:decide",
+    "added function paperci/evolve.py:min_gap_s",
+    "added function paperci/evolve.py:due_new_round"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/b8b714efbb255ba9d5397a4184930bd6bf5b1fa7",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/b8b714efbb255ba9d5397a4184930bd6bf5b1fa7"
+  },
+  {
+   "sha": "f23f9910b51c9d82b76a58917386d981c8301aab",
+   "parent": "acc32239ed56403c72fb18564072ac060f199a6c",
+   "ts": 1791744604,
+   "subject": "ICML eval: public named results vs HF consensus, DeepSeek builder, GitHub rate-limit handling",
+   "checkpoint": "01M4P2TV3KD9RED3XRXGJ21K34",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/config.py",
+    "paperci/pipeline.py"
+   ],
+   "wide_changes": [
+    "paperci/icml_eval.py:labels (removed, 14 dependents)"
+   ],
+   "files": 11,
+   "entities": 29,
+   "top": [
+    "body_changed function paperci/icml_eval.py:items",
+    "body_changed function paperci/icml_eval.py:score",
+    "removed function paperci/icml_eval.py:labels",
+    "body_changed function paperci/icml_eval.py:screen",
+    "added class paperci/sources.py:RateLimited",
+    "added method paperci/sources.py:RateLimited.__init__"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/f23f9910b51c9d82b76a58917386d981c8301aab",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/f23f9910b51c9d82b76a58917386d981c8301aab"
+  },
+  {
+   "sha": "acc32239ed56403c72fb18564072ac060f199a6c",
+   "parent": "8362807689d60a508949ceb0282ae6e858d35a78",
+   "ts": 1791743618,
+   "subject": "Document ICML external eval and GLM-only model routing",
+   "checkpoint": "01M4P2TV3KD9RED3XRXGJ21K34",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 3,
+   "entities": 8,
+   "top": [
+    "added section HUMAN_TASKS.md:B3.-Review-ICML-eval-disagreements-makes-gold-labels-as-runs-finish-3-min-per-paper",
+    "added section HUMAN_TASKS.md:B4.-Factory-API-key-after-the-hackathon",
+    "added section docs/icml-eval.md:External-eval:-PaperCI-vs-Hugging-Face-s-ICML-2026-community-reproductions",
+    "added section docs/icml-eval.md:Reference-labels",
+    "added section docs/icml-eval.md:Protocol",
+    "added section docs/icml-eval.md:Known-biases"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/acc32239ed56403c72fb18564072ac060f199a6c",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/acc32239ed56403c72fb18564072ac060f199a6c"
+  },
+  {
+   "sha": "8362807689d60a508949ceb0282ae6e858d35a78",
+   "parent": "bf22da10b81658154ea87cb849ff31afed15e535",
+   "ts": 1791743045,
+   "subject": "External eval vs Hugging Face ICML 2026 Open Reproductions: consensus labels (>=2 medium/high logbooks, >=75% agree, verified or falsified), screening, preemptible blind runs, agreement score, invite-gated human review queue whose decisions become gold labels, anonymized board aggregate, daily golden re-check, ICML bench papers feed the evolution benchmark",
+   "checkpoint": "01M4P2TV3KD9RED3XRXGJ21K34",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/evolve.py",
+    "paperci/ledger.py",
+    "paperci/pipeline.py"
+   ],
+   "wide_changes": [],
+   "files": 9,
+   "entities": 37,
+   "top": [
+    "added function paperci/icml_eval.py:status",
+    "added function paperci/icml_eval.py:items",
+    "added function paperci/icml_eval.py:_load",
+    "body_changed function paperci/pipeline.py:reproduce",
+    "added function paperci/icml_eval.py:_save",
+    "added function paperci/icml_eval.py:release"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/8362807689d60a508949ceb0282ae6e858d35a78",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/8362807689d60a508949ceb0282ae6e858d35a78"
+  },
+  {
+   "sha": "bf22da10b81658154ea87cb849ff31afed15e535",
+   "parent": "3bd95651916f28f740cd555a658a8e3b594133e4",
+   "ts": 1791742538,
+   "subject": "Factory backend: models named factory:<id> run as one locked-down droid exec call (empty cwd, only TodoWrite, tool calls returned as JSON and mapped to the OpenAI shape), traced as neatlogs LLM spans; PAPERCI_MODEL_ALL routes every role (concierge included) to one model; models are part of the evolution referee; Factory keys covered by secret scan and Entire redaction",
+   "checkpoint": "01M4P2TV3KD9RED3XRXGJ21K34",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/config.py",
+    "paperci/evolve.py"
+   ],
+   "wide_changes": [],
+   "files": 6,
+   "entities": 12,
+   "top": [
+    "added function paperci/llm.py:text",
+    "body_changed function paperci/llm.py:chat",
+    "body_changed function paperci/evolve.py:referee",
+    "added class paperci/llm.py:FactoryError",
+    "added function paperci/llm.py:_flatten",
+    "added function paperci/llm.py:_droid"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/bf22da10b81658154ea87cb849ff31afed15e535",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/bf22da10b81658154ea87cb849ff31afed15e535"
+  },
+  {
+   "sha": "3bd95651916f28f740cd555a658a8e3b594133e4",
+   "parent": "21532ac640085d2c3f6a4e356f45d0cd1ac3ecaa",
+   "ts": 1791737233,
+   "subject": "Chat summary states the builder's actual stop reason (it said 'infrastructure setup' when the builder found the linked repo belongs to a different paper)",
+   "checkpoint": "01M4NXMM3R5GSERK5PCCWHH35D",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 1,
+   "entities": 1,
+   "top": [
+    "body_changed function paperci/concierge.py:summary"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/3bd95651916f28f740cd555a658a8e3b594133e4",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/3bd95651916f28f740cd555a658a8e3b594133e4"
+  },
+  {
+   "sha": "21532ac640085d2c3f6a4e356f45d0cd1ac3ecaa",
+   "parent": "e7869fcb909923dbcc372bf94f05a3fbc9b0be3f",
+   "ts": 1791737091,
+   "subject": "Job page: replies during intake can no longer leave a job stuck (go phrases and the quick-reply button always start the run; 'write it up as is' during intake runs first, then reviews); elapsed clock counts every second in the browser between polls",
+   "checkpoint": "01M4NXMM3R5GSERK5PCCWHH35D",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 2,
+   "entities": 4,
+   "top": [
+    "body_changed function paperci/web.py:on_reply",
+    "body_changed function paperci/web.py:_progress",
+    "body_changed function paperci/web.py:job_page",
+    "added function tests/test_offline.py:test_go_replies_start_the_run"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/21532ac640085d2c3f6a4e356f45d0cd1ac3ecaa",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/21532ac640085d2c3f6a4e356f45d0cd1ac3ecaa"
+  },
+  {
+   "sha": "e7869fcb909923dbcc372bf94f05a3fbc9b0be3f",
+   "parent": "1cc6c46249ed784b7db677bdde7eb47cbd9bfbea",
+   "ts": 1791736497,
+   "subject": "Evolution referee fingerprints only the benchmark's sealed claims (sealing any other paper voided tonight's round); a referee change stops the round early and decides on runs completed before it instead of discarding everything; baselines keyed by referee",
+   "checkpoint": "01M4NWVHN7GBA114J6AJ11P5X9",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/evolve.py"
+   ],
+   "wide_changes": [
+    "paperci/evolve.py:referee (signature_changed, 4 dependents)"
+   ],
+   "files": 1,
+   "entities": 5,
+   "top": [
+    "body_changed function paperci/evolve.py:start",
+    "body_changed function paperci/evolve.py:step",
+    "body_changed function paperci/evolve.py:decide",
+    "signature_changed function paperci/evolve.py:referee",
+    "added function paperci/evolve.py:_stop_early"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/e7869fcb909923dbcc372bf94f05a3fbc9b0be3f",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/e7869fcb909923dbcc372bf94f05a3fbc9b0be3f"
+  },
+  {
+   "sha": "1cc6c46249ed784b7db677bdde7eb47cbd9bfbea",
+   "parent": "d55d70ce48860f53d8bfd7a749c5eea25b99f9ff",
+   "ts": 1791736269,
+   "subject": "Authors preempt background work: autopilot cycles and evolution benchmark runs stop within seconds when a paper is submitted, remove their sandboxes and resume afterwards (an interrupted benchmark run is redone under a fresh label and does not count as an attempt)",
+   "checkpoint": "01M4NWVHN7GBA114J6AJ11P5X9",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/evolve.py"
+   ],
+   "wide_changes": [
+    "paperci/ops.py:_sub (signature_changed, 4 dependents)"
+   ],
+   "files": 3,
+   "entities": 8,
+   "top": [
+    "added function paperci/evolve.py:release",
+    "body_changed function paperci/evolve.py:step",
+    "body_changed function paperci/ops.py:cycle",
+    "signature_changed function paperci/ops.py:_sub",
+    "added function paperci/ops.py:author_waiting",
+    "added function paperci/ops.py:_remove_sandboxes"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/1cc6c46249ed784b7db677bdde7eb47cbd9bfbea",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/1cc6c46249ed784b7db677bdde7eb47cbd9bfbea"
+  },
+  {
+   "sha": "d55d70ce48860f53d8bfd7a749c5eea25b99f9ff",
+   "parent": "7b62610e11724b28396def381644d71373b36224",
+   "ts": 1791733384,
+   "subject": "Evolution policy proposer gets the sandbox's real network rules (first candidate wrongly claimed PyPI and Hugging Face were blocked); deploy-when-idle.sh waits for the round and the worker before deploying",
+   "checkpoint": "01M4NSVMFFM52VY9KQP68FR0ZA",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/evolve.py"
+   ],
+   "wide_changes": [],
+   "files": 2,
+   "entities": 2,
+   "top": [
+    "added module deploy/deploy-when-idle.sh:deploy/deploy-when-idle.sh",
+    "body_changed module paperci/evolve.py:paperci/evolve.py"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/d55d70ce48860f53d8bfd7a749c5eea25b99f9ff",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/d55d70ce48860f53d8bfd7a749c5eea25b99f9ff"
+  },
+  {
+   "sha": "7b62610e11724b28396def381644d71373b36224",
+   "parent": "d19fb9fd928134f431d99066bffc227f42cb05b8",
+   "ts": 1791733126,
+   "subject": "Self-improvement tested before trusted: nightly evolution rounds propose a playbook and a rewritten builder control policy (sandboxed, AST-checked, no sealed values), run both against the incumbent on a fixed dev benchmark, adopt only on a margin with no regression or integrity flag; code changes need human approval; canary rollback on live papers; improver strategies scored by measured gain (meta level, depth 1); referee hash-pinned per round",
+   "checkpoint": "01M4NSVMFFM52VY9KQP68FR0ZA",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/evolve.py",
+    "paperci/improver.py",
+    "paperci/ledger.py",
+    "paperci/pipeline.py",
+    "paperci/policy_sandbox.py"
+   ],
+   "wide_changes": [
+    "paperci/improver.py:improve (signature_changed, 3 dependents)",
+    "paperci/recovery.py:load_playbook (signature_changed, 9 dependents)"
+   ],
+   "files": 16,
+   "entities": 85,
+   "top": [
+    "body_changed method paperci/stages/builder.py:Builder.run",
+    "added function paperci/evolve.py:status",
+    "added function paperci/policy_sandbox.py:check",
+    "body_changed class paperci/stages/builder.py:Builder",
+    "added function paperci/evolve.py:start",
+    "body_changed function paperci/pipeline.py:reproduce"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/7b62610e11724b28396def381644d71373b36224",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/7b62610e11724b28396def381644d71373b36224"
+  },
+  {
+   "sha": "d19fb9fd928134f431d99066bffc227f42cb05b8",
+   "parent": "5f739de2185e1db105c33ed44f50f1407cdfd89e",
+   "ts": 1791727940,
+   "subject": "Author submissions are not starved by the autopilot's daily LLM cap; still bounded by invite codes, per-IP rate limit, web spend cap and the hard stop",
+   "checkpoint": "01M4NMK8AM1VY3RET702J4WD7X",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/ledger.py"
+   ],
+   "wide_changes": [],
+   "files": 5,
+   "entities": 5,
+   "top": [
+    "body_changed function paperci/ledger.py:precheck",
+    "body_changed function paperci/web.py:_subprocess",
+    "body_changed module docs/cloud.md:docs/cloud.md",
+    "body_changed module hackathon.md:hackathon.md",
+    "body_changed function tests/test_offline.py:test_daily_cap"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/d19fb9fd928134f431d99066bffc227f42cb05b8",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/d19fb9fd928134f431d99066bffc227f42cb05b8"
+  },
+  {
+   "sha": "5f739de2185e1db105c33ed44f50f1407cdfd89e",
+   "parent": "4876fc70c7c1117ccc06e33281057c9ea564b6b5",
+   "ts": 1791727609,
+   "subject": "neatlogs prompt management and sessions: builder system prompts versioned per playbook generation and linked to builder traces, session and anonymous end-user ids on every trace, SDK delivery diagnostics in /healthz; Entire commit_linking always, PII redaction",
+   "checkpoint": "01M4NMK8AM1VY3RET702J4WD7X",
+   "level": "wide",
+   "why": "changes an interface many callers use; run the full offline suite first",
+   "referee_files": [],
+   "wide_changes": [
+    "paperci/tracing.py:span (signature_changed, 135 dependents)"
+   ],
+   "files": 8,
+   "entities": 22,
+   "top": [
+    "body_changed method paperci/stages/builder.py:Builder.run",
+    "signature_changed function paperci/tracing.py:span",
+    "body_changed class paperci/stages/builder.py:Builder",
+    "added section .entire/settings.json:email",
+    "body_changed function paperci/web.py:healthz",
+    "body_changed function paperci/tracing.py:init"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/5f739de2185e1db105c33ed44f50f1407cdfd89e",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/5f739de2185e1db105c33ed44f50f1407cdfd89e"
+  },
+  {
+   "sha": "1b58028164d1d71b688cbbb76ab52a0eddcca2db",
+   "parent": "02c3e35277d77b891b9a650627ee13e9614af39b",
+   "ts": 1791711632,
+   "subject": "Web app with a conversational agent: submit email + arXiv link or any academic file (PDF, LaTeX, DOCX, HTML, MD); agent intake, author guidance (redacted), live narration, asks when blocked and retries, summary, repo watch; redact mode for screenshots; classifier and allowlist fixes found by these runs",
+   "checkpoint": "01M4N5BQQ8TXMGNB3AK1WHD2A4",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/pipeline.py",
+    "paperci/stages/claims.py",
+    "sandbox/proxy/allowlist"
+   ],
+   "wide_changes": [
+    "paperci/pipeline.py:reproduce (signature_changed, 19 dependents)",
+    "paperci/stages/builder.py:Builder.__init__ (signature_changed, 4 dependents)"
+   ],
+   "files": 17,
+   "entities": 110,
+   "top": [
+    "added selector paperci/web.css:label",
+    "added selector paperci/web.css:a",
+    "added selector paperci/web.css:pill",
+    "added function paperci/concierge.py:summary",
+    "added selector paperci/web.css:wrap",
+    "added selector paperci/web.css:h1"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/1b58028164d1d71b688cbbb76ab52a0eddcca2db",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/1b58028164d1d71b688cbbb76ab52a0eddcca2db"
+  },
+  {
+   "sha": "02c3e35277d77b891b9a650627ee13e9614af39b",
+   "parent": "3860483da0f79bd5d29fff919176b7ccd8a55b6d",
+   "ts": 1791697603,
+   "subject": "Publish anonymized review pages (docs/reviews) and link them from the README",
+   "checkpoint": "01M4MQWGPTEW7NN60B0TDQ1AZP",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 36,
+   "entities": 104,
+   "top": [
+    "added element docs/reviews/P-13d4e4-dev-chaos2.html:r",
+    "added element docs/reviews/P-13d4e4-dev-v1.html:r",
+    "added element docs/reviews/P-397155-heldout-v1.html:r",
+    "added element docs/reviews/P-397155-heldout-v2.html:r",
+    "added element docs/reviews/P-4509b9-dev-g2.html:r",
+    "added element docs/reviews/P-4509b9-dev-v2.html:r"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/02c3e35277d77b891b9a650627ee13e9614af39b",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/02c3e35277d77b891b9a650627ee13e9614af39b"
+  },
+  {
+   "sha": "3860483da0f79bd5d29fff919176b7ccd8a55b6d",
+   "parent": "13388bdb379c94665390f4f7c821bfc3bc4867ea",
+   "ts": 1791697503,
+   "subject": "CodeRabbit for papers: paperci review (live CI-style run -> PR-style review with claims vs measured, checks, author suggestions, badge), review index, GitHub Action template, second held-out batch (n=10), disk-safe image cleanup",
+   "checkpoint": "01M4MQWGPTEW7NN60B0TDQ1AZP",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/pipeline.py",
+    "paperci/stages/tasks.py",
+    "paperci/stages/verifier.py"
+   ],
+   "wide_changes": [],
+   "files": 19,
+   "entities": 62,
+   "top": [
+    "body_changed method paperci/stages/builder.py:Builder.run",
+    "added section integrations/github-action/paperci-review.yml:on",
+    "renamed section docs/evidence.md:Evidence-generated-2026-10-11-11:11-IST-by-scripts/build_evidence.py",
+    "added section README.md:Results-so-far-measured-docs/evidence.md",
+    "added job integrations/github-action/paperci-review.yml:jobs.review",
+    "added function paperci/live.py:write"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/3860483da0f79bd5d29fff919176b7ccd8a55b6d",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/3860483da0f79bd5d29fff919176b7ccd8a55b6d"
+  },
+  {
+   "sha": "13388bdb379c94665390f4f7c821bfc3bc4867ea",
+   "parent": "dffad60813c0c9862f36a2645035a3a0041ff755",
+   "ts": 1791695164,
+   "subject": "Second chaos run (validated proxy_unreachable class), neatlogs feedback report, demo-trace labeling script, docs refresh",
+   "checkpoint": "01M4MNN3X23K0YACPFB290WFRG",
+   "level": "contained",
+   "why": "no referee files, no widely used interface changed",
+   "referee_files": [],
+   "wide_changes": [],
+   "files": 6,
+   "entities": 14,
+   "top": [
+    "added function scripts/nl_label_demo.py:run",
+    "removed section docs/evidence.md:Evidence-generated-2026-10-11-10:08-IST-by-scripts/build_evidence.py",
+    "added section docs/evidence.md:Evidence-generated-2026-10-11-10:34-IST-by-scripts/build_evidence.py",
+    "added section HUMAN_TASKS.md:2.-neatlogs-dashboard:-grab-the-before/after-trace-links-OPTIONAL-now",
+    "removed section HUMAN_TASKS.md:2.-neatlogs-dashboard:-grab-the-before/after-trace-links-TODO-5-min",
+    "added section docs/neatlogs-feedback.md:neatlogs-feedback-from-building-PaperCI-for-the-neatlogs-team-/-Discord"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/13388bdb379c94665390f4f7c821bfc3bc4867ea",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/13388bdb379c94665390f4f7c821bfc3bc4867ea"
+  },
+  {
+   "sha": "e3b748dd2178ffbdeb24eca5e159c7fb0b2b5ae1",
+   "parent": "75ae93124b713578c995d8e333571599e6022524",
+   "ts": 1791693381,
+   "subject": "Self-audit and judge hardening: replay/no-repo-code-path integrity flags, re-verification of all runs, whitespace/header-aware extraction specs, oracle-fail rejection, infra-aware oracle retries, chaos recovery, dead-container cleanup; evidence, unit economics, posts, demo script",
+   "checkpoint": "01M4MKYQ3938RM8FJ5K9ETQ55A",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/pipeline.py",
+    "paperci/stages/tasks.py",
+    "paperci/stages/verifier.py"
+   ],
+   "wide_changes": [
+    "paperci/stages/verifier.py:integrity (signature_changed, 9 dependents)",
+    "paperci/stages/verifier.py:candidates (signature_changed, 3 dependents)",
+    "paperci/stages/verifier.py:extract (signature_changed, 9 dependents)"
+   ],
+   "files": 28,
+   "entities": 92,
+   "top": [
+    "added element docs/review.html:r",
+    "added function scripts/build_evidence.py:build",
+    "added section docs/evidence.md:Evidence-generated-2026-10-11-10:03-IST-by-scripts/build_evidence.py",
+    "body_changed function paperci/stages/verifier.py:verdict",
+    "signature_changed function paperci/stages/verifier.py:integrity",
+    "signature_changed function paperci/stages/verifier.py:extract"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/e3b748dd2178ffbdeb24eca5e159c7fb0b2b5ae1",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/e3b748dd2178ffbdeb24eca5e159c7fb0b2b5ae1"
+  },
+  {
+   "sha": "e70be0fdb9cc189abc7343dfe7f934f97d53f226",
+   "parent": "d3d42fc2d75653990a49f46f7ba68086d91b107c",
+   "ts": 1791662078,
+   "subject": "Add verifier, robustness, Harbor packager, oracle + trainability, orchestrator, self-improvement loop; fix login-shell PATH and masked-failure classification",
+   "checkpoint": "01M4KP3DNR0TF8TWQE611MJJYV",
+   "level": "referee",
+   "why": "touches the frozen referee; deploy only between evolution rounds",
+   "referee_files": [
+    "paperci/improver.py",
+    "paperci/pipeline.py",
+    "paperci/stages/claims.py",
+    "paperci/stages/tasks.py",
+    "paperci/stages/verifier.py"
+   ],
+   "wide_changes": [],
+   "files": 19,
+   "entities": 66,
+   "top": [
+    "body_changed method paperci/sandbox.py:Sandbox.exec",
+    "added function paperci/pipeline.py:snap",
+    "body_changed class paperci/sandbox.py:Sandbox",
+    "body_changed function paperci/stages/claims.py:extract",
+    "added function paperci/stages/verifier.py:extract",
+    "body_changed function paperci/stages/triage.py:rules"
+   ],
+   "graph_error": null,
+   "entire_url": "https://entire.io/gh/isHeSatoshi/paperci/commit/e70be0fdb9cc189abc7343dfe7f934f97d53f226",
+   "github_url": "https://github.com/isHeSatoshi/paperci/commit/e70be0fdb9cc189abc7343dfe7f934f97d53f226"
+  }
+ ],
+ "counts": {
+  "referee": 17,
+  "wide": 4,
+  "contained": 23
+ },
+ "tool": "entire graph diff (entire-graph plugin) per checkpointed commit"
+}

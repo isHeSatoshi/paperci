@@ -508,6 +508,23 @@ def test_factory_cli_sees_an_empty_directory():
     assert r.choices[0].message.tool_calls[0].function.name == "shell"
 
 
+def test_entire_guard_flags_referee_and_wide_changes():
+    from paperci.entire_guard import assess
+    from paperci.evolve import FROZEN
+    body = {"files": [{"path": "paperci/web.py", "language": "Python",
+                       "changes": [{"type": "body_changed", "kind": "function", "name": "landing", "dependents_count": 9}]}]}
+    assert assess(body, FROZEN, ["paperci/web.py"])["level"] == "contained"
+    # the allowlist is not parsed by the graph; the git path list must still catch it
+    a = assess({"files": None}, FROZEN, ["sandbox/proxy/allowlist"])
+    assert a["level"] == "referee" and a["referee_files"] == ["sandbox/proxy/allowlist"]
+    sig = {"files": [{"path": "paperci/llm.py", "language": "Python",
+                      "changes": [{"type": "signature_changed", "kind": "function", "name": "chat", "dependents_count": 12}]}]}
+    assert assess(sig, FROZEN, ["paperci/llm.py"])["level"] == "wide"
+    md = {"files": [{"path": "docs/posts.md", "language": "Markdown",
+                     "changes": [{"type": "removed", "kind": "section", "name": "Post 6", "dependents_count": 40}]}]}
+    assert assess(md, FROZEN, ["docs/posts.md"])["level"] == "contained"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -22,6 +22,9 @@ from typing import Any
 from .config import ROOT
 
 REPO = "https://github.com/isHeSatoshi/paperci"
+ENTIRE = "https://entire.io/gh/isHeSatoshi/paperci"
+SESSION = "bf4a7d1a-7a3a-45c9-b8bd-1b2c021e7bc7"
+GRAPH = ROOT / "docs" / "entire-graph.json"
 KICKOFF = calendar.timegm((2026, 10, 10, 7, 0, 0))  # 12:30 IST, from neatlogs.com/hackathon
 LINKS = ROOT / "docs" / "judges-links.json"
 LOOP = ROOT / "docs" / "neatlogs-loop.json"
@@ -340,20 +343,41 @@ def checks(d: dict) -> list[dict]:
                    "LLM cost in neatlogs is 0: the Factory models are not priced there, so cost comes from our own ledger."]})
 
     ex = g.get("checkpoint_example") or {}
+    try:
+        eg = json.loads(GRAPH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        eg = {}
+    egc = eg.get("counts") or {}
+    referee_ex = next((c for c in eg.get("commits", []) if c.get("level") == "referee"), None)
     out.append({
         "id": "entire", "title": "You used Entire",
         "rule": "Checkpoints or entire-graph output from your repository",
         "status": "pass" if g.get("checkpointed") else "missing",
-        "headline": f"{g.get('checkpointed', 0)} of {g.get('commits', 0)} commits carry an Entire checkpoint",
+        "headline": f"{g.get('checkpointed', 0)} of {g.get('commits', 0)} commits carry an Entire checkpoint"
+                    + (f"; entire-graph analysed all {len(eg['commits'])} of them" if eg.get("commits") else ""),
         "evidence": [
-            (f"Latest: <a href='{REPO}/commit/{ex['sha']}' target=_blank><code>{ex['sha'][:8]}</code></a> "
-             f"&ldquo;{html.escape(ex['subject'][:90])}&rdquo;, checkpoint <code>{html.escape(ex['checkpoint'])}</code>.") if ex else "No checkpoint yet.",
+            (f"Checkpoints, progress and decisions: <a href='{ENTIRE}/commit/{ex['sha']}' target=_blank rel=noopener>"
+             f"<code>{ex['sha'][:8]}</code> on Entire</a> &ldquo;{html.escape(ex['subject'][:90])}&rdquo;, checkpoint "
+             f"<code>{html.escape(ex['checkpoint'])}</code>. The Sessions tab shows every request and decision since the "
+             f"mission prompt (<a href='{ENTIRE}/session/{SESSION}' target=_blank rel=noopener>full session</a>), "
+             "the Changes tab the code.") if ex else "No checkpoint yet.",
+            (f"entire-graph: <a href='{REPO}/blob/main/docs/entire-graph.md' target=_blank>every checkpointed commit, "
+             f"entity by entity</a>: {egc.get('referee', 0)} touched the frozen referee, {egc.get('wide', 0)} changed a "
+             f"widely used interface, {egc.get('contained', 0)} were contained."
+             + (f" Example referee change: <a href='{html.escape(referee_ex['entire_url'])}' target=_blank rel=noopener>"
+                f"<code>{referee_ex['sha'][:8]}</code></a> {html.escape(referee_ex['subject'][:70])}." if referee_ex else "")) if eg else
+            "entire-graph report not generated yet.",
+            (f"Open-source build on the Entire CLI + Graph: <a href='{REPO}/blob/main/paperci/entire_guard.py' target=_blank>"
+             "<code>paperci/entire_guard.py</code></a>, a referee guard for the self-healing loop. "
+             "<code>gate</code> runs <code>entire graph diff</code> before a deploy and refuses (exit 2) a change that "
+             "touches the files the evolution loop scores against, so the rules never change mid-round; "
+             "<code>report</code> links each commit to its checkpoint."),
             "Each checkpoint holds the coding session behind the commit (prompt, reasoning, tool calls), with custom redactions "
             "for API keys, GitHub tokens and neatlogs service tokens checked before every push.",
-            "The overnight fixes were found by the cloud agent's own night watch and committed with the session attached.",
         ],
-        "verify": "git log --format='%(trailers:key=Entire-Checkpoint,valueonly)' | grep -c .",
-        "limits": ["Early scaffolding commits predate the Entire setup."]})
+        "verify": "entire plugin install graph && python -m paperci.entire_guard gate --base HEAD~5 --head HEAD",
+        "limits": ["Early scaffolding commits predate the Entire setup.",
+                   "Graph dependent counts are heuristic (name-based), so 'wide' is a prompt to run tests, not a proof."]})
 
     cfo = lk.get("cfo_url")
     out.append({

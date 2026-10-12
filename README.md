@@ -167,7 +167,12 @@ one morning: a quoting crash in the builder harness, a verifier false positive o
 Google Drive missing from the allowlist ([the triage, measured live](https://paperci.vercel.app/judges#loop)).
 
 **Entire** records the coding session behind each commit as a checkpoint, so every fix in that triage table
-links the commit and the session that reasoned about it. **cfo.ai** models the business plan from the measured
+links the commit and the session that reasoned about it
+([example checkpoint](https://entire.io/gh/isHeSatoshi/paperci/commit/42beb3a1e5c9aad2a8290ee122f88e3c8cd22534)).
+**entire-graph** guards the self-healing loop: [`paperci/entire_guard.py`](paperci/entire_guard.py) runs
+`entire graph diff` on a change and refuses it before a deploy if it touches the frozen referee (verifier, sealed
+claims, allowlist), so the rules never shift mid-round; [the report](docs/entire-graph.md) covers every
+checkpointed commit. **cfo.ai** models the business plan from the measured
 [unit economics](docs/unit-economics.md); the plan link is on [/judges](https://paperci.vercel.app/judges).
 LLMs: DeepSeek V4.1 Flash (builder) and GLM-5.3-Flash (verifier and always-on roles) through the Factory API;
 earlier runs used Claude and Amazon Nova.
