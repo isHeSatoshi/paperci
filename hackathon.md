@@ -161,6 +161,19 @@
   attempt. GitHub token added on the server (read-only, public repos): 5,000 requests/hour instead of 60.
 - README rewritten in plain language with two memes; new TECHNICAL_WRITEUP.md.
 
+### 2026-10-12 (Mon) 10:30 IST: neatlogs as PaperCI's eyes
+- Traces were hard to read: no input/output set, so neatlogs showed the first log line ("prompt registration
+  skipped") as the trace input, and failed runs were OK spans, so "Execution Failed" never fired. Now every
+  workflow and stage span has `input.value`/`output.value` (paper in, verdict out), failed runs (turn limit,
+  sandbox error, integrity flag, failed offline run) are ERROR, and Factory LLM calls carry token counts.
+- Prompt registration had failed on every run: neatlogs allows one label per prompt version. Fixed (variant
+  is the label, playbook generation a tag).
+- Six PaperCI regex detections (budget run-out, integrity flag, refused host, rejected dry run, honest
+  give-up, claims verified).
+- New `paperci/nl_api.py`: a `paperci-server` service account (one project, 7-day token) publishes every
+  unrecovered builder failure category as a native neatlogs incident linked to its traces, after each job.
+  First publish: 11 incidents. Trace feedback and comments need a user login, so the server does not post them.
+
 ## Results (measured; from `docs/evidence.md`, `docs/unit-economics.md`)
 - Funnel: 145 fresh code papers -> 55 pass triage -> 44 with grounded sealed claims (173 claims). Front half $0.553.
 - Held-out before/after, all 10 held-out papers with sealed claims, queue order (v1 baseline -> v2 self-improved).
