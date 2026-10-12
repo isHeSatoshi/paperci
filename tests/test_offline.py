@@ -480,6 +480,34 @@ def test_sandbox_owner_label():
         assert owner_alive(owner_label()) is None
 
 
+def test_factory_cli_sees_an_empty_directory():
+    import json
+    import os
+    import subprocess
+    from paperci import llm
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"], seen["listing"] = cmd, os.listdir(cmd[cmd.index("--cwd") + 1])
+        seen["prompt"] = Path(cmd[cmd.index("-f") + 1]).read_text(encoding="utf-8")
+        out = {"result": json.dumps({"content": "ok", "tool_calls": [{"name": "shell", "arguments": {"cmd": "ls"}}]}),
+               "usage": {"input_tokens": 10, "output_tokens": 5}}
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(out), stderr="")
+
+    real_run, key = subprocess.run, os.environ.get("FACTORY_API_KEY")
+    subprocess.run, os.environ["FACTORY_API_KEY"] = fake_run, key or "test"
+    try:
+        tools = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+        r = llm._factory_chat("factory:glm-5.3-flash", [{"role": "user", "content": "go"}], tools, "test")
+    finally:
+        subprocess.run = real_run
+        if key is None:
+            os.environ.pop("FACTORY_API_KEY", None)
+    assert seen["listing"] == [] and "go" in seen["prompt"]
+    assert seen["cmd"][seen["cmd"].index("--append-system-prompt") + 1] == llm.HOST_NOTE
+    assert r.choices[0].message.tool_calls[0].function.name == "shell"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

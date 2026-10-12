@@ -107,6 +107,10 @@ def chat(*, arxiv_id: str, stage: str, run_label: str, model: str, messages: lis
 # and tool calls returned as JSON that is mapped back to the OpenAI response shape the agents already use.
 FACTORY_PREFIX = "factory:"
 FACTORY_TIMEOUT = int(os.getenv("PAPERCI_FACTORY_TIMEOUT", "420"))
+HOST_NOTE = ("The working directory, file listing, operating system and tools described in your environment "
+             "context belong to the CLI host and are unrelated to this task. Do not infer anything about the "
+             "task's machine, sandbox, files, permissions or network from them; rely only on the SYSTEM text and "
+             "the TOOL RESULT sections of the prompt.")
 
 
 class FactoryError(Exception):
@@ -160,14 +164,20 @@ def _factory_chat(model: str, messages: list[dict], tools: list | None, stage: s
     if not os.environ.get("FACTORY_API_KEY"):
         raise ValueError("FACTORY_API_KEY is not set")
     prompt = _flatten(messages, tools)
-    with tempfile.TemporaryDirectory(prefix="pci-llm-") as cwd:
-        pf = os.path.join(cwd, "prompt.txt")
+    with tempfile.TemporaryDirectory(prefix="pci-llm-") as tmp:
+        # droid exec tells the model about its own working directory and files; a builder once read that
+        # listing as its sandbox ("only /work/prompt.txt is present") and gave up. Keep the CLI's cwd empty
+        # and say that its environment is unrelated.
+        cwd = os.path.join(tmp, "empty")
+        os.mkdir(cwd)
+        pf = os.path.join(tmp, "prompt.txt")
         with open(pf, "w", encoding="utf-8") as f:
             f.write(prompt)
         mid = model[len(FACTORY_PREFIX):]
         effort = os.getenv("PAPERCI_FACTORY_EFFORT") or ("high" if mid.startswith("deepseek") else "low")
         cmd = [_droid(), "exec", "-m", mid, "-r", effort,
-               "--output-format", "json", "-f", pf, "--cwd", cwd, "--disable-builtin-skills", "--restrict-tools", "TodoWrite"]
+               "--output-format", "json", "-f", pf, "--cwd", cwd, "--disable-builtin-skills", "--restrict-tools", "TodoWrite",
+               "--append-system-prompt", HOST_NOTE]
         t0 = time.time()
         with tracing.span(f"llm:{stage}", kind="LLM", model=model, prompt_chars=len(prompt)) as s:
             try:
