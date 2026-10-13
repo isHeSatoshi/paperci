@@ -60,5 +60,5 @@ Everything under **Measured** comes from the spend ledger (reconciled with the L
 | Product C: reproducibility audit for a venue/track | $2-5k per track | hypothesis |
 | Infra fixed cost | $300/month (orchestrator VM, storage, tracing) | assumption |
 | Headcount | 2 founders, no salary first 6 months | assumption |
-| Buyer list | docs/buyer-map.md (Crustdata company enrichment) | measured enrichment |
+| Buyer list | Crustdata company enrichment (kept private) | measured enrichment |
 

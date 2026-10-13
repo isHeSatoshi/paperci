@@ -67,13 +67,11 @@ secrets are never put in user data.
 
 ## Operating it
 
-```powershell
-# deploy a new commit
-ssh -i $HOME\.ssh\paperci_aws ubuntu@44.215.70.124 "cd paperci && git pull -q && sudo systemctl restart paperci-web"
-# what is it doing?
-ssh -i $HOME\.ssh\paperci_aws ubuntu@44.215.70.124 "cd paperci && .venv/bin/python -m paperci.ops events"
-# back up its state to backups\
-powershell -File scripts\pull_cloud.ps1
+```bash
+# on the server, from ~/paperci
+bash deploy/deploy.sh                    # deploy origin/main: tests, restart, health check, automatic rollback
+bash deploy/deploy-when-idle.sh          # the same, but waits for the worker and any evolution round to finish
+.venv/bin/python -m paperci.ops events   # what is it doing?
 ```
 
 Infrastructure: `deploy/aws/provision.py` (boto3; CloudFormation is denied in this account), `deploy/bootstrap.sh`,

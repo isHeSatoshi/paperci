@@ -84,7 +84,7 @@
 - User linked the repo in Entire. Second chaos run on another dev paper: recovered again and was now classified
   `proxy_unreachable` (the classifier fix from the first chaos run, validated). neatlogs: the CLI login is
   read-only (tag/comment FORBIDDEN, sharing read-only), and ingestion is degraded (Doctor probe now fails with
-  TRACE_READBACK_TIMEOUT; 16 traces in `dlq`). Wrote `docs/neatlogs-feedback.md` for the neatlogs team.
+  TRACE_READBACK_TIMEOUT; 16 traces in `dlq`). Wrote up feedback for the neatlogs team.
 
 - Product: `python -m paperci review <arxiv-id>` runs the whole pipeline with CI-style live output and ends in a
   CodeRabbit-style review (HTML + Markdown + README badge): pipeline strip, walkthrough, claims-vs-measured table,
@@ -192,7 +192,7 @@
   verdicts), explained by the playbook reset above.
 - `/judges`: PaperCI run on its own submission; each official evidence row is a claim re-checked live (git,
   neatlogs API, run DB), with a verify command and what it does not show, plus the neatlogs triage table with
-  live "since the fix" counts, a mirrored trace and `judges.json`. Demo script: `docs/demo-script.md`.
+  live "since the fix" counts, a mirrored trace and `judges.json`.
 - Opened to everyone (operator's call): invite codes removed. Still bounded: 3 (later 10, `PAPERCI_SUBMITS_PER_HOUR`) submissions per network per hour,
   $0.60 per paper, and spend ceilings resized for the Factory key (the old $16 hard stop was sized for the $20
   LiteLLM key and was about to stop the agent): hard stop $60, web cap $55. Raised again once the operator
@@ -228,7 +228,7 @@
 
 ## Demo
 - Live app: https://paperci.vercel.app (paste an arXiv link; e.g. 2507.12843 finishes in a few minutes).
-- Video: linked on /judges and in the submission post. Script: docs/demo-script.md.
+- Video: linked on /judges and in the submission post.
 - Building in public: https://x.com/isHeSatoshi/status/2109565183140274613 (#neatHack).
 
 ## Known limitations and next steps
@@ -240,4 +240,4 @@
 ## Submission (confirmed requirements, from neatlogs.com/hackathon)
 - Use neatlogs, Entire and cfo.ai; submit on X by quoting the official neatlogs post (team, name, project, public repo, demo), Mon 12 Oct 7:00-11:55 PM IST.
 - Evidence: before/after traces with numbers; failure + recovery run; Entire checkpoint link + ID; cfo.ai plan; public repo with hackathon-dated commits; #neatHack posts.
-- Where each one is: https://paperci.vercel.app/judges (re-checked live). Outstanding (human): see HUMAN_TASKS.md.
+- Where each one is: https://paperci.vercel.app/judges (re-checked live).

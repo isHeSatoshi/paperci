@@ -50,7 +50,6 @@ data/night_watch.md
 # Local agent tooling and notes (not part of the submission)
 AGENTS.md
 .factory/*
-!.factory/settings.json
 .netlify/
 PROGRESS.md
 docs/posts.md
@@ -60,3 +59,13 @@ scripts/show_queue.py
 scripts/inspect_db.py
 scripts/reset_triage.py
 scripts/nl_label_demo.py
+
+# Operator notes, private business data and generated pages (kept locally, not published)
+HUMAN_TASKS.md
+docs/demo-script.md
+docs/neatlogs-feedback.md
+docs/buyer-map.md
+scripts/crustdata_buyers.py
+scripts/pull_cloud.ps1
+docs/review.html
+docs/dashboard_public.html
