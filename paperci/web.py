@@ -490,7 +490,7 @@ def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head><body>
 <div class=nav><a class=logo href="/">Paper<span>CI</span></a><div><a class=l href="/board">Live board</a><a class=l href="/#how">How it works</a>
-<a class=l href="/icml">ICML 2026 results</a><a class=l href="/judges"><b>For judges</b></a><a class=l href="/examples/index.html">Earlier runs</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
+<a class=l href="/icml">ICML 2026 results</a><a class=l href="/local">Run locally</a><a class=l href="/judges"><b>For judges</b></a><a class=l href="/examples/index.html">Earlier runs</a><a class=l href="https://github.com/isHeSatoshi/paperci">GitHub</a></div></div>
 {body}</body></html>""")
 
 
@@ -525,6 +525,7 @@ headline claim against what your code actually produces, before reviewers or rea
 <label class=chk><input type=checkbox name=consent required> I am an author (or have permission) and agree that PaperCI runs this public code in an isolated sandbox.</label>
 <button class=btn id=sb>Start verification</button>{err}
 <div class=muted style="margin-top:10px">Today: CPU-scale code, no GPU, no paid API keys. GPU and simulator workloads are on the roadmap.</div>
+<div class=muted style="margin-top:6px">Server busy? <a href="/local">Run the same agent on your machine with your own LLM</a> (Ollama, LM Studio, vLLM, LiteLLM).</div>
 </form></div></div>
 <div class=wrap id=how><div class=how><h3>What the agent does with your paper</h3><div class=cols>
 <div class=step><div class=num>1</div><b>Reads and seals</b><span class=muted>Extracts your headline claims with verbatim quotes and seals them (sha256). The engineer agent only sees metric names.</span></div>
@@ -577,7 +578,7 @@ await fetch('/api/job/{token}/reply',{{method:'POST',headers:{{'Content-Type':'a
 document.getElementById('rt').value='';busy=false;tick(true);return false;}}
 async function tick(once){{const r=await fetch('/api/job/{token}');const j=await r.json();
 const P=document.getElementById('pill');P.className='pill '+j.status;P.textContent=j.status.replace('_',' ');
-document.getElementById('meta').textContent=j.status.startsWith('queued')&&j.queued_ahead?(j.queued_ahead+' run(s) ahead of you'):(j.watching?'watching your repository':'');
+document.getElementById('meta').innerHTML=j.status.startsWith('queued')&&j.queued_ahead?(j.queued_ahead+' run(s) ahead of you &middot; <a href="/local">skip the queue: run it on your machine</a>'):(j.watching?'watching your repository':'');
 if(j.title)document.getElementById('ttl').textContent=j.title;
 if(j.messages.length!=nmsg){{nmsg=j.messages.length;const M=document.getElementById('msgs');
 M.innerHTML=j.messages.map(m=>m.role=='author'?`<div class="m me"><div class=b>${{md(m.text)}}</div></div>`:
@@ -709,6 +710,65 @@ the paper was verified or falsified. PaperCI runs each one blind: no agent ever 
 code ran and was measured on a smaller setting (fewer steps, seeds or data) that fits a CPU; it is evidence that the
 code works, not a verdict on the paper's full-scale numbers.</p>{head}{queue}
 {''.join(cards) or "<p class=muted>The first results appear here as runs finish.</p>"}</div>""")
+
+
+GH_REPO = "https://github.com/isHeSatoshi/paperci"
+LOCAL_SERVERS = [
+    ("Ollama", "http://localhost:11434/v1", "OLLAMA_CONTEXT_LENGTH=32768 ollama serve<br>ollama pull qwen2.5-coder:14b", "local:qwen2.5-coder:14b"),
+    ("LM Studio", "http://localhost:1234/v1", "lms server start<br>lms load &lt;model&gt; -c 32768", "local:&lt;id from lms ls&gt;"),
+    ("vLLM", "http://localhost:8001/v1", "vllm serve &lt;model&gt; --port 8001 --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes", "local:&lt;model&gt;"),
+    ("llama.cpp", "http://localhost:8080/v1", "llama-server -m model.gguf -c 32768 --jinja", "local:&lt;anything&gt;"),
+    ("LiteLLM proxy", "http://localhost:4000/v1", 'pip install "litellm[proxy]"<br>litellm --config deploy/local/litellm.yaml --port 4000', "local:paperci-builder<br>local:paperci-verifier"),
+]
+
+
+@app.get("/local", response_class=HTMLResponse)
+def local_page():
+    rows = "".join(f"<tr><td><b>{n}</b></td><td><code>{u}</code></td><td><code>{c}</code></td><td><code>{m}</code></td></tr>"
+                   for n, u, c, m in LOCAL_SERVERS)
+    pre = "background:#0f172a;color:#e2e8f0;border-radius:12px;padding:16px 18px;overflow-x:auto;font:14px/1.55 ui-monospace,Consolas,monospace"
+    td = "<style>.lt2{border-collapse:collapse;width:100%;font-size:14px}.lt2 td,.lt2 th{border-bottom:1px solid #e2e8f0;padding:9px 10px;text-align:left;vertical-align:top}.lt2 code{font-size:12.5px}</style>"
+    return _page("Run PaperCI locally with your own LLM", f"""{td}<div class=wrap style='padding:28px 0 64px;max-width:980px'>
+<span class=kick>Skip the queue</span>
+<h1>Run PaperCI on <em>your machine</em>, with your own LLM</h1>
+<p class=lead>The public server is one 2-CPU box, so runs queue up when many people try at once. The agent you
+see here runs on a laptop or workstation too: the same sandbox and egress allowlist, sealed claims, independent verifier and
+this dashboard. Only the language model changes: Ollama, LM Studio, vLLM, llama.cpp, or a local LiteLLM proxy.</p>
+<h3>1. Start it</h3>
+<p>You need Docker (Linux containers) and Python 3.11+.</p>
+<pre style="{pre}">git clone {GH_REPO} && cd paperci
+bash scripts/run-local.sh                                        # macOS / Linux
+powershell -ExecutionPolicy Bypass -File scripts\\run-local.ps1   # Windows</pre>
+<p class=muted>The script creates <code>.venv</code>, copies the local preset to <code>.env</code>, builds the sandbox images,
+runs a preflight, and serves this dashboard at <b>http://127.0.0.1:8000</b>. Paste an arXiv link there as you would here.</p>
+<h3>2. Point it at your LLM</h3>
+<p>In <code>.env</code>, every role takes a <code>local:</code> model served at <code>PAPERCI_LOCAL_BASE_URL</code>:</p>
+<pre style="{pre}">PAPERCI_LOCAL_BASE_URL=http://localhost:11434/v1
+PAPERCI_MODEL_BUILDER=local:qwen2.5-coder:14b
+PAPERCI_MODEL_ALL=local:llama3.1:8b      # verifier and the other roles: a different model family</pre>
+<table class=lt2><tr><th>Server</th><th>Base URL</th><th>Start it with</th><th>Model names</th></tr>{rows}</table>
+<p class=muted>Local LiteLLM proxy: <a href="{GH_REPO}/blob/main/deploy/local/litellm.yaml" target=_blank>deploy/local/litellm.yaml</a>
+defines a builder and a verifier alias. Point each alias at Ollama, vLLM or a hosted API with your own key, and set
+<code>PAPERCI_LOCAL_API_KEY</code> to the proxy's master key. If an alias goes to a paid API, set
+<code>PAPERCI_LOCAL_PRICE_IN</code> and <code>PAPERCI_LOCAL_PRICE_OUT</code> (USD per million tokens) so the per-paper dollar caps apply.</p>
+<h3>3. Let the preflight check your model</h3>
+<pre style="{pre}">python -m paperci.localrun check
+[ok  ] Docker 29.6.2 (linux containers)
+[ok  ] LLM server at http://localhost:1234/v1 serves 2 model(s)
+[ok  ] local:qwen2.5-1.5b-instruct: made a tool call via native tool calls (shell {{"cmd":"ls"}})
+[ok  ] local:qwen2.5-1.5b-instruct: context holds a 16000-token prompt (16037 tokens seen)</pre>
+<ul class=ticks>
+<li><b>32k context.</b> Paper prompts run 10 to 20k tokens. LM Studio's default 8k rejects them, and Ollama's default silently cuts them; the check catches both.</li>
+<li><b>7B+ instruction models with tool calling</b> (e.g. Qwen2.5-Coder 14B builder, Llama 3.1 8B verifier). Smaller models run, but their claims rarely pass the grounding check, which requires a verbatim quote from the paper for every claim.</li>
+<li><b>A different verifier.</b> Independence is the point of the verifier; the check warns if builder and verifier are the same model.</li>
+<li><b>No native tools?</b> PaperCI switches to its JSON tool protocol on its own (<code>PAPERCI_LOCAL_TOOLS=json</code> forces it).</li>
+</ul>
+<h3>Local vs this server</h3>
+<p>Same code and the same <code>python -m paperci.web</code> process; the cloud adds a systemd unit, watchdog and Caddy. The autopilot
+(watching arXiv, nightly evolution) is off locally unless you set <code>PAPERCI_AUTOPILOT=1</code>. neatlogs tracing is optional. Your paper and
+model stay on your machine; the sandbox still fetches the paper's code and dependencies through the allowlist, and the scored rerun has no network.</p>
+<p><a class=btn style="display:inline-block;width:auto;padding:12px 22px;text-decoration:none" href="{GH_REPO}/blob/main/docs/run-locally.md" target=_blank>Full guide on GitHub</a></p>
+</div>""")
 
 
 @app.get("/judges", response_class=HTMLResponse)

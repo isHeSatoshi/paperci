@@ -1,0 +1,18 @@
+# A local LiteLLM proxy for PaperCI: two aliases, two model families (the verifier should not be the builder).
+#   pip install "litellm[proxy]"
+#   litellm --config deploy/local/litellm.yaml --port 4000
+# Then in .env: PAPERCI_LOCAL_BASE_URL=http://localhost:4000/v1, PAPERCI_LOCAL_API_KEY=sk-paperci-local,
+# PAPERCI_MODEL_BUILDER=local:paperci-builder, PAPERCI_MODEL_ALL=local:paperci-verifier.
+# Swap a model line for any LiteLLM provider (vllm/..., openai/..., anthropic/...); keys come from your env.
+model_list:
+  - model_name: paperci-builder
+    litellm_params:
+      model: ollama_chat/qwen2.5-coder:14b
+      api_base: http://localhost:11434
+  - model_name: paperci-verifier
+    litellm_params:
+      model: ollama_chat/llama3.1:8b
+      api_base: http://localhost:11434
+
+general_settings:
+  master_key: sk-paperci-local   # only guards this local proxy; it is not a provider key

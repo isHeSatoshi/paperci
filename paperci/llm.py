@@ -28,6 +28,46 @@ def client() -> OpenAI:
     return _client
 
 
+# ---------------------------------------------------------------- local backend
+# "local:<model>" goes to any OpenAI-compatible server the user runs (Ollama, LM Studio, vLLM, llama.cpp).
+LOCAL_PREFIX = "local:"
+_local_client: OpenAI | None = None
+_local_json_tools = os.getenv("PAPERCI_LOCAL_TOOLS", "native").lower() == "json"
+
+
+def local_client() -> OpenAI:
+    global _local_client
+    if _local_client is None:
+        _local_client = neatlogs.wrap(OpenAI(
+            base_url=os.getenv("PAPERCI_LOCAL_BASE_URL", "http://localhost:11434/v1"),
+            api_key=os.getenv("PAPERCI_LOCAL_API_KEY") or "local", max_retries=0,
+            timeout=float(os.getenv("PAPERCI_LOCAL_TIMEOUT", "900"))))
+    return _local_client
+
+
+def _local_chat(kwargs: dict[str, Any]) -> Any:
+    """Native tool calling when the server supports it; otherwise the same JSON tool protocol as the Factory
+    backend, so small local models that ignore `tools` can still drive the builder."""
+    global _local_json_tools
+    kw = dict(kwargs, model=kwargs["model"][len(LOCAL_PREFIX):])
+    tools = kw.pop("tools", None)
+    if tools and not _local_json_tools:
+        try:
+            return local_client().chat.completions.create(**kw, tools=tools)
+        except openai.BadRequestError as e:
+            if "tool" not in str(e).lower():
+                raise
+            _local_json_tools = True
+            tracing.log("local model rejected native tools; switching to JSON tool calls", level="warning")
+    if not tools:
+        return local_client().chat.completions.create(**kw)
+    msgs = [{"role": "user", "content": _flatten(kw.pop("messages"), tools)}]
+    resp = local_client().chat.completions.create(**kw, messages=msgs)
+    content, calls = _json_tool_calls(resp.choices[0].message.content or "")
+    from types import SimpleNamespace as NS
+    return NS(choices=[NS(message=NS(content=content, tool_calls=calls))], usage=resp.usage)
+
+
 def _chars(messages: list[dict]) -> int:
     n = 0
     for m in messages:
@@ -65,6 +105,12 @@ def chat(*, arxiv_id: str, stage: str, run_label: str, model: str, messages: lis
          stage_cap: float | None = None, cache: bool = False, allow_reserve: bool = False) -> Any:
     if model in FORBIDDEN_MODELS:
         raise ValueError(f"model {model} is disabled by budget policy")
+    if model.startswith(LOCAL_PREFIX):
+        # Unknown models are priced as Claude Sonnet by the ledger. A model on the user's own machine costs
+        # nothing per token (turn and wall-clock caps bound the run); a local LiteLLM proxy routing to a paid API
+        # can declare its price per million tokens so the dollar caps still apply.
+        PRICES.setdefault(model, {"in": float(os.getenv("PAPERCI_LOCAL_PRICE_IN", "0")) / 1e6,
+                                  "out": float(os.getenv("PAPERCI_LOCAL_PRICE_OUT", "0")) / 1e6})
     est = estimate(model, messages, max_tokens, tools)
     ledger.precheck(arxiv_id, run_label, est, stage_cap=stage_cap, stage=stage, allow_reserve=allow_reserve)
     send = _with_cache_marks(messages) if cache and model.startswith("claude") else messages
@@ -76,6 +122,8 @@ def chat(*, arxiv_id: str, stage: str, run_label: str, model: str, messages: lis
         try:
             if model.startswith(FACTORY_PREFIX):
                 resp = _factory_chat(model, messages, tools, stage)
+            elif model.startswith(LOCAL_PREFIX):
+                resp = _local_chat(kwargs)
             else:
                 resp = client().chat.completions.create(**kwargs)
             break
@@ -159,7 +207,6 @@ def _droid() -> str:
 def _factory_chat(model: str, messages: list[dict], tools: list | None, stage: str) -> Any:
     import subprocess
     import tempfile
-    import uuid
     from types import SimpleNamespace as NS
     if not os.environ.get("FACTORY_API_KEY"):
         raise ValueError("FACTORY_API_KEY is not set")
@@ -209,20 +256,25 @@ def _factory_chat(model: str, messages: list[dict], tools: list | None, stage: s
                          ("neatlogs.llm.token_count.total", int(u.get("input_tokens") or 0) + int(u.get("output_tokens") or 0)),
                          ("neatlogs.llm.metrics.duration_ms", int((time.time() - t0) * 1000))):
                 s.set_attribute(k, v)
-    content, calls = result, None
-    if tools:
-        try:
-            j = extract_json(result)
-            content = str(j.get("content") or "")
-            calls = [NS(id=f"call_{uuid.uuid4().hex[:10]}", type="function",
-                        function=NS(name=str(c["name"]), arguments=json.dumps(c.get("arguments") or {})))
-                     for c in (j.get("tool_calls") or []) if isinstance(c, dict) and c.get("name")] or None
-        except Exception:
-            content, calls = result, None  # the agent loop asks the model to call a tool
+    content, calls = _json_tool_calls(result) if tools else (result, None)
     usage = NS(prompt_tokens=int(u.get("input_tokens") or 0), completion_tokens=int(u.get("output_tokens") or 0),
                cache_read_input_tokens=int(u.get("cache_read_input_tokens") or 0),
                cache_creation_input_tokens=int(u.get("cache_creation_input_tokens") or 0))
     return NS(choices=[NS(message=NS(content=content, tool_calls=calls))], usage=usage)
+
+
+def _json_tool_calls(result: str) -> tuple[str, list | None]:
+    """Map a `{"content": ..., "tool_calls": [...]}` reply (see _flatten) to OpenAI-shaped tool calls."""
+    import uuid
+    from types import SimpleNamespace as NS
+    try:
+        j = extract_json(result)
+        calls = [NS(id=f"call_{uuid.uuid4().hex[:10]}", type="function",
+                    function=NS(name=str(c["name"]), arguments=json.dumps(c.get("arguments") or {})))
+                 for c in (j.get("tool_calls") or []) if isinstance(c, dict) and c.get("name")] or None
+        return str(j.get("content") or ""), calls
+    except Exception:
+        return result, None  # the agent loop asks the model to call a tool
 
 
 _JSON_RE = re.compile(r"\{.*\}|\[.*\]", re.S)

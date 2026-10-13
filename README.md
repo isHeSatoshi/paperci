@@ -8,7 +8,7 @@ paper's authors._
 
 **Try it: [paperci.vercel.app](https://paperci.vercel.app)** (open to everyone: paste an arXiv link) ·
 [Live board](https://paperci.vercel.app/board) · [ICML 2026 results, by paper](https://paperci.vercel.app/icml) ·
-[Technical write-up](TECHNICAL_WRITEUP.md)
+[Technical write-up](TECHNICAL_WRITEUP.md) · **Server busy? [Run it locally with your own LLM](docs/run-locally.md)**
 
 **Judges: [paperci.vercel.app/judges](https://paperci.vercel.app/judges)** runs PaperCI's own rule on this
 submission: each official evidence row is a claim, re-checked live against git, the neatlogs API and the agent's
@@ -127,19 +127,36 @@ AI evaluation moves from writing benchmarks to verifying them. PaperCI does the 
   and something watches the watchdog. Bad deploys roll back on their own, and it runs chaos drills against
   itself every night. [Details](docs/cloud.md).
 
-## Run it yourself
+## Run it yourself, with your own LLM
 
-Python 3.12, Docker running.
+The public server is one 2-CPU box, so runs queue up when many people try at once. The same agent runs on
+your machine: same sandbox, allowlist, sealed claims, verifier and dashboard, with the LLM you choose (Ollama,
+LM Studio, vLLM, llama.cpp, or a local LiteLLM proxy). You need Docker and Python 3.11+.
 
 ```
-uv venv .venv
-uv pip install --python .venv/bin/python "neatlogs[openai]" openai pydantic requests python-dotenv fastapi uvicorn python-multipart
-cp .env.example .env                  # NEATLOGS_API_KEY, plus LITELLM_API_KEY or FACTORY_API_KEY
-docker build -t paperci/proxy:latest sandbox/proxy
-docker build -t paperci/sandbox:base sandbox/runner
-python tests/test_offline.py          # 18 offline checks, no API keys needed
-python -m paperci review 2507.12843   # one paper end to end, ends in a review page
-python -m paperci.web                 # the web app at http://127.0.0.1:8000
+git clone https://github.com/isHeSatoshi/paperci && cd paperci
+bash scripts/run-local.sh                                        # macOS / Linux
+powershell -ExecutionPolicy Bypass -File scripts\run-local.ps1   # Windows
+```
+
+The script sets up `.venv`, copies the [local preset](deploy/local/local.env.example) to `.env`, builds the
+sandbox images, runs a preflight, and opens the dashboard at http://127.0.0.1:8000. Pick models in `.env` with
+a `local:` prefix:
+
+```
+PAPERCI_LOCAL_BASE_URL=http://localhost:11434/v1     # Ollama; LM Studio :1234, LiteLLM proxy :4000
+PAPERCI_MODEL_BUILDER=local:qwen2.5-coder:14b
+PAPERCI_MODEL_ALL=local:llama3.1:8b                   # verifier and the rest: a different model family
+```
+
+Load models with a 32k context and use 7B+ models with tool calling. `python -m paperci.localrun check` tests
+both for real before you submit a paper. LiteLLM config, every server, and the trade-offs:
+**[docs/run-locally.md](docs/run-locally.md)**. Hosted keys (`LITELLM_API_KEY` or `FACTORY_API_KEY`, see
+`.env.example`) still work.
+
+```
+python tests/test_offline.py          # offline checks, no API keys or LLM needed
+python -m paperci review 2507.12843   # one paper end to end from the command line
 ```
 
 ## Safety and limits

@@ -525,6 +525,45 @@ def test_entire_guard_flags_referee_and_wide_changes():
     assert assess(md, FROZEN, ["docs/posts.md"])["level"] == "contained"
 
 
+def test_local_backend_native_then_json_tools():
+    import json
+    from types import SimpleNamespace as NS
+
+    import httpx
+    import openai
+
+    from paperci import llm
+    seen = []
+
+    class Completions:
+        def create(self, **kw):
+            seen.append(kw)
+            if "tools" in kw:
+                raise openai.BadRequestError("this model does not support tools", body=None,
+                                             response=httpx.Response(400, request=httpx.Request("POST", "http://x")))
+            reply = '{"content": "look first", "tool_calls": [{"name": "shell", "arguments": {"cmd": "ls"}}]}'
+            return NS(choices=[NS(message=NS(content=reply, tool_calls=None))],
+                      usage=NS(prompt_tokens=10, completion_tokens=5))
+
+    real, flag = llm._local_client, llm._local_json_tools
+    llm._local_client, llm._local_json_tools = NS(chat=NS(completions=Completions())), False
+    try:
+        tools = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+        r = llm._local_chat({"model": "local:qwen2.5-coder:14b", "messages": [{"role": "user", "content": "go"}],
+                             "tools": tools, "max_tokens": 50})
+        assert seen[0]["model"] == "qwen2.5-coder:14b" and "tools" in seen[0]   # prefix stripped once
+        assert "tools" not in seen[1] and "Functions you can call" in seen[1]["messages"][0]["content"]
+        c = r.choices[0].message.tool_calls[0]
+        assert c.function.name == "shell" and json.loads(c.function.arguments) == {"cmd": "ls"}
+        assert llm._local_json_tools  # remembered: later calls skip the failing native attempt
+    finally:
+        llm._local_client, llm._local_json_tools = real, flag
+    from paperci.config import PRICES
+    from paperci.ledger import price_call
+    PRICES.setdefault("local:test-model", {"in": 0.0, "out": 0.0})
+    assert price_call("local:test-model", 100000, 100000) == 0.0
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
