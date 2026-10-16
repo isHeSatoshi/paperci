@@ -1,10 +1,12 @@
 # External dead-man's switch for the cloud agent. Runs outside AWS, so it still fires if the whole server is gone.
-# A failed run makes GitHub email the repository owner. Read-only: it only GETs the public health endpoint.
+# Read-only: it only GETs the public health endpoint.
 #
-# Retired 2026-10-16: the cloud window (2026-10-11 until 2026-10-16 23:59 IST) has closed and the EC2 agent is
-# intentionally off, so the 30-minute schedule was removed. Otherwise every run emails a failure for a service
-# that is supposed to be silent. Dispatch it by hand (Actions -> paperci-uptime -> Run workflow) if the agent is
-# brought back up; restore the schedule block below at the same time.
+# Retired 2026-10-16. The cloud window ran 2026-10-11 until 2026-10-16 23:59 IST. The EC2 agent is off and the
+# hackathon AWS credentials have been deactivated (InvalidClientTokenId), so the endpoint this probes no longer
+# answers. The 30-minute schedule was removed: it emailed a failure on every run for a service that is supposed to
+# be silent. The probe is informational now, it reports what it finds and always passes.
+#
+# To revive: start the agent again, then make the probe fail on a bad status and restore the schedule block:
 #   schedule:
 #     - cron: "*/30 * * * *"
 name: paperci-uptime
@@ -16,15 +18,13 @@ jobs:
   health:
     runs-on: ubuntu-latest
     steps:
-      - name: Check the agent is alive (web up, worker beating, watchdog running)
+      - name: Probe the agent endpoint (informational)
         run: |
-          # the server powers itself off at 2026-10-16 18:29 UTC; after that silence is expected
-          [ "$(date -u +%s)" -gt "$(date -u -d '2026-10-16 18:35' +%s)" ] && { echo "credit window over"; exit 0; }
-          for i in 1 2 3; do
-            body=$(curl -s -m 20 -w '\n%{http_code}' https://paperci.vercel.app/healthz) && code=$(echo "$body" | tail -n1)
-            echo "$body"
-            [ "$code" = "200" ] && echo "$body" | head -n1 | python3 -c "import json,sys; d=json.load(sys.stdin); a=d.get('watchdog_age_s'); sys.exit(0 if a is None or a < 900 else 1)" && exit 0
-            sleep 60
-          done
-          echo "::error::PaperCI agent unhealthy (web down, worker hung, or watchdog silent)"
-          exit 1
+          body=$(curl -s -m 25 -w '\n%{http_code}' https://paperci.vercel.app/healthz || true)
+          code=$(echo "$body" | tail -n1)
+          echo "$body"
+          if [ "$code" = "200" ]; then
+            echo "$body" | head -n1 | python3 -c "import json,sys; print('agent healthy, watchdog_age_s=%s' % json.load(sys.stdin).get('watchdog_age_s'))" || true
+          else
+            echo "::notice::Agent endpoint unreachable (HTTP $code). Expected: the cloud window closed 2026-10-16."
+          fi
