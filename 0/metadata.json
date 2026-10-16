@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M52Z1ZZKMVM7FH4K1XXFEVV0",
+  "session_id": "11a73a45-e4a1-4081-8773-1fac4f66bb29",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-16T18:19:45.5799654Z",
+  "branch": "main",
+  "checkpoints_count": 10,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Factory AI Droid",
+  "model": "deepseek-v4.1-flash",
+  "turn_id": "ad28111b2dcb",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 11
+  }
+}
