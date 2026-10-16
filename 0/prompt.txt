@@ -1,0 +1,57 @@
+Set up Agent Toolkit for AWS by following instructions:
+https://raw.githubusercontent.com/aws/agent-toolkit-for-aws/refs/heads/main/setup-instructions/setup.md
+
+---
+
+just this repo just concet me for thus hacvkathon i have aws credits connect locla agent with aws
+
+---
+
+didit entered sign in for this hacakthon acocunt they have but once that was done got this
+
+---
+
+i againdid it browser the first acocunt ut once done got 400 error
+
+---
+
+did it bt gain saw 400
+
+---
+
+do this again will open on nocgnito and try
+
+---
+
+do again pls
+
+---
+
+do again pls i just do aws login
+
+---
+
+didnt do it. cant you just do this:CLI / SDK credentials
+Access key ID
+AKIARGJJ5K5CNRWCS7PA
+Secret access key
+Pm3GW/REDACTED/ct+k
+Set your region to us-east-1. Keep keys out of Git, screenshots, and public chats.
+
+---
+
+i have made it live on aws but wanan change link. see if ENtire-one of hackathon sponsors itself cant do that. if not see which is free and name custom cloudflare opr vecel site should be  live fr 5 more days
+
+---
+
+nah dont u dare deploy detlify i want vercel or cloudflare
+
+---
+
+i want you just to download vercel so annd i wil authentciate on rbowser. dont deploy i wabt anothe ranet to dpeloy. u just downlaod and let me authentciate
+
+---
+
+https://github.com/isHeSatoshi/paperci/actions/runs/38658751119
+
+saw multiple such failures fix pls
