@@ -1,9 +1,14 @@
 # External dead-man's switch for the cloud agent. Runs outside AWS, so it still fires if the whole server is gone.
 # A failed run makes GitHub email the repository owner. Read-only: it only GETs the public health endpoint.
+#
+# Retired 2026-10-16: the cloud window (2026-10-11 until 2026-10-16 23:59 IST) has closed and the EC2 agent is
+# intentionally off, so the 30-minute schedule was removed. Otherwise every run emails a failure for a service
+# that is supposed to be silent. Dispatch it by hand (Actions -> paperci-uptime -> Run workflow) if the agent is
+# brought back up; restore the schedule block below at the same time.
+#   schedule:
+#     - cron: "*/30 * * * *"
 name: paperci-uptime
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
